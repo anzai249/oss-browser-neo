@@ -1,0 +1,136 @@
+<script setup>
+import {
+  mdiTranslate,
+  mdiAlertCircleOutline,
+  mdiArrowRight,
+  mdiArrowTopRight,
+  mdiArrowUp,
+  mdiCheckCircleOutline,
+  mdiChevronDown,
+  mdiChevronRight,
+  mdiClockOutline,
+  mdiClose,
+  mdiCloudAlertOutline,
+  mdiCloudCheckOutline,
+  mdiCloudOutline,
+  mdiCloudSyncOutline,
+  mdiCloudUploadOutline,
+  mdiCodeBrackets,
+  mdiCodeJson,
+  mdiCogOutline,
+  mdiContentCopy,
+  mdiCursorDefaultClickOutline,
+  mdiDatabaseOutline,
+  mdiDockRight,
+  mdiDotsHorizontal,
+  mdiDownload,
+  mdiFileDocumentOutline,
+  mdiFileOutline,
+  mdiFilePdfBox,
+  mdiFileSearchOutline,
+  mdiFlaskOutline,
+  mdiFolder,
+  mdiFolderOpenOutline,
+  mdiFolderOutline,
+  mdiFolderPlusOutline,
+  mdiFolderZipOutline,
+  mdiFormatListBulleted,
+  mdiHelpCircleOutline,
+  mdiHomeOutline,
+  mdiImageOutline,
+  mdiLayersTripleOutline,
+  mdiMagnify,
+  mdiMenu,
+  mdiMonitorDashboard,
+  mdiPlus,
+  mdiRefresh,
+  mdiShieldCheckOutline,
+  mdiSortVariant,
+  mdiStar,
+  mdiStarOutline,
+  mdiSwapVertical,
+  mdiTextBoxOutline,
+  mdiTrashCanOutline,
+  mdiUpload,
+  mdiViewGridOutline,
+} from '@mdi/js'
+const icons = {
+  mdiTranslate,
+  mdiAlertCircleOutline,
+  mdiArrowRight,
+  mdiArrowTopRight,
+  mdiArrowUp,
+  mdiCheckCircleOutline,
+  mdiChevronDown,
+  mdiChevronRight,
+  mdiClockOutline,
+  mdiClose,
+  mdiCloudAlertOutline,
+  mdiCloudCheckOutline,
+  mdiCloudOutline,
+  mdiCloudSyncOutline,
+  mdiCloudUploadOutline,
+  mdiCodeBrackets,
+  mdiCodeJson,
+  mdiCogOutline,
+  mdiContentCopy,
+  mdiCursorDefaultClickOutline,
+  mdiDatabaseOutline,
+  mdiDockRight,
+  mdiDotsHorizontal,
+  mdiDownload,
+  mdiFileDocumentOutline,
+  mdiFileOutline,
+  mdiFilePdfBox,
+  mdiFileSearchOutline,
+  mdiFlaskOutline,
+  mdiFolder,
+  mdiFolderOpenOutline,
+  mdiFolderOutline,
+  mdiFolderPlusOutline,
+  mdiFolderZipOutline,
+  mdiFormatListBulleted,
+  mdiHelpCircleOutline,
+  mdiHomeOutline,
+  mdiImageOutline,
+  mdiLayersTripleOutline,
+  mdiMagnify,
+  mdiMenu,
+  mdiMonitorDashboard,
+  mdiPlus,
+  mdiRefresh,
+  mdiShieldCheckOutline,
+  mdiSortVariant,
+  mdiStar,
+  mdiStarOutline,
+  mdiSwapVertical,
+  mdiTextBoxOutline,
+  mdiTrashCanOutline,
+  mdiUpload,
+  mdiViewGridOutline,
+}
+const props = defineProps({
+  name: { type: String, default: 'file-outline' },
+  size: { type: [Number, String], default: 20 },
+})
+const path = () =>
+  icons[
+    'mdi' +
+      props.name
+        .split('-')
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join('')
+  ] || icons.mdiFileOutline
+</script>
+<template>
+  <svg
+    :width="size"
+    :height="size"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    class="app-icon"
+  >
+    <path :d="path()" />
+  </svg>
+</template>
