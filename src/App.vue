@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import Icon from './components/AppIcon.vue'
 import { useFileDrop } from './composables/useFileDrop.js'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
@@ -42,6 +42,17 @@ const {
   disconnect,
   createFolder,
   upload,
+  pauseUpload,
+  resumeUpload,
+  cancelUpload,
+  showTransfer,
+  createSignedUrl,
+  copyObject,
+  setObjectAcl,
+  getObjectHeaders,
+  setObjectHeaders,
+  restoreObject,
+  createObjectSymlink,
   download,
   removeSelected,
 } = useWorkspace()
@@ -58,6 +69,53 @@ const preferencesDialog = ref(false),
   detailsOpen = ref(true),
   fileInput = ref(null),
   searchInput = ref(null)
+const objectMenu = ref(false),
+  objectMenuTarget = ref(null),
+  objectMenuItem = ref(null),
+  addressDialog = ref(false),
+  addressItem = ref(null),
+  signedUrl = ref(''),
+  signedUrlLoading = ref(false),
+  signedUrlExpiry = ref(3600),
+  objectOperationDialog = ref(false),
+  objectOperationItem = ref(null),
+  objectOperationType = ref('copy'),
+  objectOperationTarget = ref(''),
+  objectOperationError = ref(''),
+  aclDialog = ref(false),
+  aclItem = ref(null),
+  aclValue = ref('default'),
+  headersDialog = ref(false),
+  headersItem = ref(null),
+  headersLoading = ref(false),
+  headersError = ref(''),
+  objectHeaders = ref({}),
+  restoreDialog = ref(false),
+  restoreItem = ref(null),
+  restoreDays = ref(1),
+  symlinkDialog = ref(false),
+  symlinkItem = ref(null),
+  symlinkTarget = ref(''),
+  symlinkError = ref('')
+const signedUrlExpiries = computed(() => [
+  { title: t('address.oneHour'), value: 3600 },
+  { title: t('address.oneDay'), value: 86400 },
+  { title: t('address.sevenDays'), value: 604800 },
+])
+const aclOptions = computed(() => [
+  { title: t('acl.default'), value: 'default' },
+  { title: t('acl.private'), value: 'private' },
+  { title: t('acl.publicRead'), value: 'public-read' },
+  { title: t('acl.publicReadWrite'), value: 'public-read-write' },
+])
+const headerFields = [
+  ['contentType', 'Content-Type'],
+  ['contentEncoding', 'Content-Encoding'],
+  ['contentLanguage', 'Content-Language'],
+  ['cacheControl', 'Cache-Control'],
+  ['contentDisposition', 'Content-Disposition'],
+  ['expires', 'Expires'],
+]
 const fileDrop = useFileDrop({
   enabled: () => mode.value === 'live' && !busy.value && !connectionDialog.value,
   panel: () => dropPanel.value,
@@ -91,6 +149,7 @@ const breadcrumbs = computed(() =>
 )
 const totalSize = computed(() => objects.value.reduce((sum, o) => sum + o.size, 0))
 const completed = computed(() => transfers.value.filter((t) => t.status === 'done').length)
+const formatTransferSize = (bytes) => (bytes === 0 ? '0 B' : formatSize(bytes))
 const selectedSize = computed(() =>
   objects.value.filter((o) => selection.value.includes(o.key)).reduce((s, o) => s + o.size, 0),
 )
@@ -151,6 +210,142 @@ async function copyPath(item) {
     toast.value = 'feedback.pathCopied'
   } catch {
     toast.value = 'errors.clipboard'
+  }
+}
+async function showObjectMenu(event, item) {
+  event.preventDefault()
+  event.stopPropagation()
+  if (!selection.value.includes(item.key)) selection.value = [item.key]
+  select(item)
+  objectMenu.value = false
+  objectMenuItem.value = item
+  objectMenuTarget.value =
+    event.type === 'contextmenu' ? [event.clientX, event.clientY] : event.currentTarget
+  await nextTick()
+  objectMenu.value = true
+}
+async function showAddress(item) {
+  objectMenu.value = false
+  addressItem.value = item
+  signedUrl.value = ''
+  addressDialog.value = true
+  await generateSignedUrl()
+}
+async function generateSignedUrl() {
+  if (!addressItem.value) return
+  signedUrlLoading.value = true
+  try {
+    signedUrl.value = await createSignedUrl(addressItem.value, signedUrlExpiry.value)
+  } catch (error) {
+    toast.value = String(error)
+  } finally {
+    signedUrlLoading.value = false
+  }
+}
+async function copySignedUrl() {
+  try {
+    await navigator.clipboard.writeText(signedUrl.value)
+    toast.value = 'feedback.urlCopied'
+  } catch {
+    toast.value = 'errors.clipboard'
+  }
+}
+async function revealTransfer(task) {
+  const item = await showTransfer(task)
+  if (item) detailsOpen.value = true
+}
+function showObjectOperation(item, type) {
+  objectMenu.value = false
+  objectOperationItem.value = item
+  objectOperationType.value = type
+  objectOperationError.value = ''
+  const name = fileName(item)
+  const parent = item.key.slice(0, item.key.length - name.length)
+  objectOperationTarget.value = type === 'rename' ? name : `${parent}copy-${name}`
+  objectOperationDialog.value = true
+}
+async function submitObjectOperation() {
+  if (!objectOperationItem.value) return
+  const item = objectOperationItem.value
+  const type = objectOperationType.value
+  const name = objectOperationTarget.value.trim()
+  const parent = item.key.slice(0, item.key.length - fileName(item).length)
+  const target = type === 'rename' ? parent + name : name
+  try {
+    objectOperationError.value = ''
+    await copyObject(item, target, type !== 'copy')
+    objectOperationDialog.value = false
+  } catch (error) {
+    objectOperationError.value = String(error)
+  }
+}
+function showAcl(item) {
+  objectMenu.value = false
+  aclItem.value = item
+  aclValue.value = 'default'
+  aclDialog.value = true
+}
+async function submitAcl() {
+  try {
+    await setObjectAcl(aclItem.value, aclValue.value)
+    aclDialog.value = false
+  } catch (error) {
+    toast.value = String(error)
+  }
+}
+async function showHeaders(item) {
+  objectMenu.value = false
+  headersItem.value = item
+  headersError.value = ''
+  objectHeaders.value = Object.fromEntries(headerFields.map(([key]) => [key, '']))
+  headersDialog.value = true
+  headersLoading.value = true
+  try {
+    objectHeaders.value = await getObjectHeaders(item)
+  } catch (error) {
+    headersError.value = String(error)
+  } finally {
+    headersLoading.value = false
+  }
+}
+async function submitHeaders() {
+  try {
+    headersError.value = ''
+    await setObjectHeaders(headersItem.value, objectHeaders.value)
+    headersDialog.value = false
+  } catch (error) {
+    headersError.value = String(error)
+  }
+}
+function showRestore(item) {
+  objectMenu.value = false
+  restoreItem.value = item
+  restoreDays.value = 1
+  restoreDialog.value = true
+}
+async function submitRestore() {
+  try {
+    await restoreObject(restoreItem.value, restoreDays.value)
+    restoreDialog.value = false
+  } catch (error) {
+    toast.value = String(error)
+  }
+}
+function showSymlink(item) {
+  objectMenu.value = false
+  symlinkItem.value = item
+  symlinkError.value = ''
+  const name = fileName(item)
+  symlinkTarget.value = `${item.key.slice(0, item.key.length - name.length)}link-${name}`
+  symlinkDialog.value = true
+}
+async function submitSymlink() {
+  try {
+    symlinkError.value = ''
+    await createObjectSymlink(symlinkItem.value, symlinkTarget.value)
+    symlinkDialog.value = false
+  } catch (error) {
+    symlinkError.value = String(error)
   }
 }
 function dropFiles(event) {
@@ -638,6 +833,7 @@ onUnmounted(() => {
                         }"
                         @click="select(item)"
                         @dblclick="openItem(item)"
+                        @contextmenu="showObjectMenu($event, item)"
                       >
                         <td class="checkbox-cell" @click.stop>
                           <v-checkbox-btn
@@ -689,40 +885,16 @@ onUnmounted(() => {
                             <Icon
                               :name="isStarred(item) ? 'star' : 'star-outline'"
                               :size="17" /></v-btn
-                          ><v-menu
-                            ><template #activator="{ props }"
-                              ><v-btn
-                                variant="text"
-                                size="small"
-                                icon
-                                v-bind="props"
-                                class="icon-button"
-                                :aria-label="t('files.more', { name: fileName(item) })"
-                                @click.stop
-                              >
-                                <Icon name="dots-horizontal" :size="19" /></v-btn></template
-                            ><v-list density="compact"
-                              ><v-list-item role="button" @click="openItem(item)">{{
-                                item.isFolder ? t('files.openFolder') : t('files.viewInfo')
-                              }}</v-list-item
-                              ><v-list-item
-                                role="button"
-                                v-if="!item.isFolder"
-                                :disabled="busy"
-                                @click="download(item)"
-                                >{{ t('actions.downloadFile') }}</v-list-item
-                              ><v-list-item role="button" @click="copyPath(item)">{{
-                                t('actions.copyOssPath')
-                              }}</v-list-item
-                              ><v-list-item
-                                role="button"
-                                :disabled="busy"
-                                class="text-red-600"
-                                @click="requestDelete(item)"
-                                >{{ t('actions.delete') }}</v-list-item
-                              ></v-list
-                            ></v-menu
+                          ><v-btn
+                            variant="text"
+                            size="small"
+                            icon
+                            class="icon-button"
+                            :aria-label="t('files.more', { name: fileName(item) })"
+                            @click="showObjectMenu($event, item)"
                           >
+                            <Icon name="dots-horizontal" :size="19"
+                          /></v-btn>
                         </td>
                       </tr>
                     </tbody>
@@ -734,6 +906,7 @@ onUnmounted(() => {
                       :key="item.key"
                       class="file-grid-card"
                       :class="{ selected: focused?.key === item.key }"
+                      @contextmenu="showObjectMenu($event, item)"
                     >
                       <div class="flex justify-between">
                         <v-checkbox-btn
@@ -920,8 +1093,15 @@ onUnmounted(() => {
             </div>
             <v-btn
               variant="outlined"
-              :disabled="busy || !transfers.length"
-              @click="transfers = transfers.filter((t) => t.status === 'active')"
+              :disabled="
+                busy ||
+                !transfers.some((task) => !['waiting', 'active', 'paused'].includes(task.status))
+              "
+              @click="
+                transfers = transfers.filter((task) =>
+                  ['waiting', 'active', 'paused'].includes(task.status),
+                )
+              "
               >{{ t('transfers.clear') }}</v-btn
             >
           </div>
@@ -961,36 +1141,91 @@ onUnmounted(() => {
               <div class="flex-1 min-w-0">
                 <strong>{{ task.name }}</strong>
                 <p>
-                  {{ task.bucket }} · {{ formatSize(task.size) }} ·
+                  {{ task.bucket }} · {{ formatTransferSize(task.size) }} ·
                   {{ task.direction === 'upload' ? t('actions.upload') : t('actions.download') }}
+                </p>
+                <p v-if="task.direction === 'upload'" class="transfer-metrics">
+                  {{ formatTransferSize(task.loaded) }} / {{ formatTransferSize(task.size) }}
+                  <span v-if="task.status === 'active' && task.speed">
+                    · {{ formatTransferSize(task.speed) }}/s</span
+                  >
+                  <span v-if="Number.isFinite(task.progress)"> · {{ task.progress }}%</span>
                 </p>
                 <p v-if="task.error" class="transfer-error">{{ messageText(task.error) }}</p>
                 <v-progress-linear
-                  v-if="task.status === 'active'"
-                  indeterminate
+                  v-if="task.direction === 'upload'"
+                  :model-value="task.progress"
                   color="primary"
                   class="mt-2"
+                  height="4"
                 />
               </div>
-              <span class="task-status" :class="task.status"
-                ><Icon
-                  :name="
-                    task.status === 'done'
-                      ? 'check-circle-outline'
-                      : task.status === 'error'
-                        ? 'alert-circle-outline'
-                        : 'clock-outline'
-                  "
-                  :size="16"
-                />{{
-                  {
-                    done: t('transfers.done'),
-                    error: t('transfers.error'),
-                    active: t('transfers.active'),
-                    cancelled: t('transfers.cancelled'),
-                  }[task.status]
-                }}</span
-              >
+              <div class="transfer-actions">
+                <span class="task-status" :class="task.status"
+                  ><Icon
+                    :name="
+                      task.status === 'done'
+                        ? 'check-circle-outline'
+                        : task.status === 'error'
+                          ? 'alert-circle-outline'
+                          : task.status === 'paused'
+                            ? 'pause'
+                            : 'clock-outline'
+                    "
+                    :size="16"
+                  />{{
+                    {
+                      done: t('transfers.done'),
+                      error: t('transfers.error'),
+                      active: t('transfers.active'),
+                      waiting: t('transfers.waiting'),
+                      paused: t('transfers.paused'),
+                      cancelled: t('transfers.cancelled'),
+                    }[task.status]
+                  }}</span
+                >
+                <div v-if="task.direction === 'upload'" class="transfer-action-buttons">
+                  <v-btn
+                    v-if="task.status === 'active'"
+                    icon
+                    variant="text"
+                    size="small"
+                    :aria-label="t('transfers.pause')"
+                    @click="pauseUpload(task.id)"
+                    ><Icon name="pause" :size="18"
+                  /></v-btn>
+                  <v-btn
+                    v-if="task.status === 'paused'"
+                    icon
+                    variant="text"
+                    size="small"
+                    color="primary"
+                    :aria-label="t('transfers.resume')"
+                    @click="resumeUpload(task.id)"
+                    ><Icon name="play" :size="18"
+                  /></v-btn>
+                  <v-btn
+                    v-if="['waiting', 'active', 'paused'].includes(task.status)"
+                    icon
+                    variant="text"
+                    size="small"
+                    color="error"
+                    :aria-label="t('transfers.cancel')"
+                    @click="cancelUpload(task.id)"
+                    ><Icon name="close" :size="18"
+                  /></v-btn>
+                  <v-btn
+                    v-if="task.status === 'done'"
+                    variant="text"
+                    size="small"
+                    color="primary"
+                    @click="revealTransfer(task)"
+                    ><Icon name="folder-search-outline" :size="17" class="mr-1" />{{
+                      t('transfers.showInBrowser')
+                    }}</v-btn
+                  >
+                </div>
+              </div>
             </div>
           </section>
         </main>
@@ -1036,6 +1271,305 @@ onUnmounted(() => {
         </main>
       </div>
     </div>
+
+    <v-menu
+      v-model="objectMenu"
+      :target="objectMenuTarget"
+      location="bottom start"
+      :close-on-content-click="true"
+    >
+      <v-list min-width="238" :aria-label="t('actions.objectActions')">
+        <v-list-item
+          v-if="objectMenuItem"
+          :title="objectMenuItem.isFolder ? t('files.openFolder') : t('files.viewInfo')"
+          @click="openItem(objectMenuItem)"
+        >
+          <template #prepend
+            ><Icon
+              :name="objectMenuItem.isFolder ? 'folder-open-outline' : 'file-document-outline'"
+          /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.downloadFile')"
+          :disabled="busy"
+          @click="download(objectMenuItem)"
+        >
+          <template #prepend><Icon name="download" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.copy')"
+          :disabled="busy"
+          @click="showObjectOperation(objectMenuItem, 'copy')"
+        >
+          <template #prepend><Icon name="content-copy" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.move')"
+          :disabled="busy"
+          @click="showObjectOperation(objectMenuItem, 'move')"
+        >
+          <template #prepend><Icon name="content-cut" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.rename')"
+          :disabled="busy"
+          @click="showObjectOperation(objectMenuItem, 'rename')"
+        >
+          <template #prepend><Icon name="pencil-outline" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.acl')"
+          :disabled="busy"
+          @click="showAcl(objectMenuItem)"
+        >
+          <template #prepend><Icon name="shield-outline" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.httpHeaders')"
+          :disabled="busy"
+          @click="showHeaders(objectMenuItem)"
+        >
+          <template #prepend><Icon name="cog-outline" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && /Archive/i.test(objectMenuItem.storageClass)"
+          :title="t('actions.restore')"
+          :disabled="busy"
+          @click="showRestore(objectMenuItem)"
+        >
+          <template #prepend><Icon name="cloud-sync-outline" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.symlink')"
+          :disabled="busy"
+          @click="showSymlink(objectMenuItem)"
+        >
+          <template #prepend><Icon name="link-variant" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem && !objectMenuItem.isFolder"
+          :title="t('actions.getHttpUrl')"
+          @click="showAddress(objectMenuItem)"
+        >
+          <template #prepend><Icon name="link-variant" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem"
+          :title="t('files.copyPath')"
+          @click="copyPath(objectMenuItem)"
+        >
+          <template #prepend><Icon name="content-copy" /></template>
+        </v-list-item>
+        <v-list-item
+          v-if="objectMenuItem"
+          :title="t(isStarred(objectMenuItem) ? 'actions.removeStar' : 'actions.addStar')"
+          @click="toggleStar(objectMenuItem)"
+        >
+          <template #prepend
+            ><Icon :name="isStarred(objectMenuItem) ? 'star' : 'star-outline'"
+          /></template>
+        </v-list-item>
+        <v-divider />
+        <v-list-item
+          v-if="objectMenuItem"
+          :title="t('actions.delete')"
+          base-color="error"
+          :disabled="busy"
+          @click="requestDelete(objectMenuItem)"
+        >
+          <template #prepend><Icon name="trash-can-outline" /></template>
+        </v-list-item>
+      </v-list>
+    </v-menu>
+
+    <v-dialog v-model="addressDialog" max-width="620">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t('address.title') }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">
+            {{ t('address.description', { name: addressItem ? fileName(addressItem) : '' }) }}
+          </p>
+          <v-select
+            v-model="signedUrlExpiry"
+            :items="signedUrlExpiries"
+            :label="t('address.expiry')"
+            hide-details
+          />
+          <v-textarea
+            class="mt-4 signed-url-field"
+            :model-value="signedUrl"
+            :label="t('address.url')"
+            :loading="signedUrlLoading"
+            readonly
+            rows="4"
+            auto-grow
+            hide-details
+          />
+          <v-alert class="mt-4" type="info" variant="tonal" density="compact">
+            {{ t('address.warning') }}
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn @click="addressDialog = false">{{ t('actions.close') }}</v-btn>
+          <v-btn variant="outlined" :loading="signedUrlLoading" @click="generateSignedUrl">
+            {{ t('address.generate') }}
+          </v-btn>
+          <v-btn color="primary" variant="flat" :disabled="!signedUrl" @click="copySignedUrl">
+            <Icon name="content-copy" :size="17" class="mr-2" />{{ t('address.copy') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="objectOperationDialog" max-width="500" :persistent="busy">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t(`objectOperation.${objectOperationType}Title`) }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">
+            {{
+              t(`objectOperation.${objectOperationType}Description`, {
+                name: objectOperationItem ? fileName(objectOperationItem) : '',
+              })
+            }}
+          </p>
+          <form @submit.prevent="submitObjectOperation">
+            <v-text-field
+              v-model="objectOperationTarget"
+              :label="
+                t(
+                  objectOperationType === 'rename'
+                    ? 'objectOperation.name'
+                    : 'objectOperation.path',
+                )
+              "
+              :prefix="objectOperationType === 'rename' ? prefix : ''"
+              :disabled="busy"
+              :error-messages="messageText(objectOperationError)"
+              autofocus
+            />
+          </form>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn :disabled="busy" @click="objectOperationDialog = false">{{
+            t('actions.cancel')
+          }}</v-btn>
+          <v-btn color="primary" variant="flat" :loading="busy" @click="submitObjectOperation">
+            {{ t(`actions.${objectOperationType}`) }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="aclDialog" max-width="500" :persistent="busy">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t('acl.title') }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">{{ t('acl.description') }}</p>
+          <v-select v-model="aclValue" :items="aclOptions" :label="t('acl.access')" />
+          <v-alert
+            v-if="aclValue === 'public-read-write'"
+            type="warning"
+            density="compact"
+            variant="tonal"
+            >{{ t('acl.publicWarning') }}</v-alert
+          >
+        </v-card-text>
+        <v-card-actions>
+          <v-btn :disabled="busy" @click="aclDialog = false">{{ t('actions.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" :loading="busy" @click="submitAcl">{{
+            t('actions.save')
+          }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="headersDialog" max-width="620" :persistent="busy">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t('headers.title') }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">{{ t('headers.description') }}</p>
+          <v-progress-linear v-if="headersLoading" indeterminate color="primary" class="mb-3" />
+          <v-alert v-if="headersError" type="error" density="compact" variant="tonal" class="mb-3">
+            {{ messageText(headersError) }}
+          </v-alert>
+          <div class="header-fields">
+            <v-text-field
+              v-for="([key, label], index) in headerFields"
+              :key="key"
+              v-model="objectHeaders[key]"
+              :label="label"
+              :disabled="busy || headersLoading"
+              :autofocus="index === 0"
+              hide-details
+            />
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn :disabled="busy" @click="headersDialog = false">{{ t('actions.cancel') }}</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="busy"
+            :disabled="headersLoading || !!headersError"
+            @click="submitHeaders"
+            >{{ t('actions.save') }}</v-btn
+          >
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="restoreDialog" max-width="460" :persistent="busy">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t('restore.title') }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">{{ t('restore.description') }}</p>
+          <v-select
+            v-model="restoreDays"
+            :items="[1, 2, 3, 4, 5, 6, 7]"
+            :label="t('restore.days')"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-btn :disabled="busy" @click="restoreDialog = false">{{ t('actions.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" :loading="busy" @click="submitRestore">{{
+            t('restore.submit')
+          }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="symlinkDialog" max-width="520" :persistent="busy">
+      <v-card class="app-dialog">
+        <v-card-title>{{ t('symlink.title') }}</v-card-title>
+        <v-card-text>
+          <p class="dialog-description">
+            {{ t('symlink.description', { name: symlinkItem ? fileName(symlinkItem) : '' }) }}
+          </p>
+          <form @submit.prevent="submitSymlink">
+            <v-text-field
+              v-model="symlinkTarget"
+              :label="t('symlink.path')"
+              :disabled="busy"
+              :error-messages="messageText(symlinkError)"
+              autofocus
+            />
+          </form>
+        </v-card-text>
+        <v-card-actions>
+          <v-btn :disabled="busy" @click="symlinkDialog = false">{{ t('actions.cancel') }}</v-btn>
+          <v-btn color="primary" variant="flat" :loading="busy" @click="submitSymlink">{{
+            t('symlink.create')
+          }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="preferencesDialog" max-width="640" scrollable>
       <v-card class="app-dialog preferences-dialog">

@@ -31,6 +31,68 @@ export const oss = {
       data: Array.from(new Uint8Array(await file.arrayBuffer())),
       contentType: file.type || 'application/octet-stream',
     }),
+  startUpload: (bucket, region, key, contentType) =>
+    invoke('start_multipart_upload', {
+      options: options(),
+      bucket,
+      region,
+      key,
+      contentType: contentType || 'application/octet-stream',
+    }),
+  uploadPart: async (bucket, region, key, uploadId, partNumber, blob) =>
+    invoke('upload_part', {
+      options: options(),
+      bucket,
+      region,
+      key,
+      uploadId,
+      partNumber,
+      data: Array.from(new Uint8Array(await blob.arrayBuffer())),
+    }),
+  completeUpload: (bucket, region, key, uploadId, parts) =>
+    invoke('complete_multipart_upload', {
+      options: options(),
+      bucket,
+      region,
+      key,
+      uploadId,
+      parts,
+    }),
+  abortUpload: (bucket, region, key, uploadId) =>
+    invoke('abort_multipart_upload', {
+      options: options(),
+      bucket,
+      region,
+      key,
+      uploadId,
+    }),
+  signedUrl: (bucket, region, key, expiresSeconds) =>
+    invoke('signed_object_url', { bucket, region, key, expiresSeconds }),
+  copyObject: (bucket, region, sourceKey, targetKey, deleteSource = false) =>
+    invoke('copy_object', {
+      bucket,
+      region,
+      sourceKey,
+      targetKey,
+      deleteSource,
+      options: options(),
+    }),
+  setAcl: (bucket, region, key, acl) =>
+    invoke('set_object_acl', { bucket, region, key, acl, options: options() }),
+  getHeaders: (bucket, region, key) =>
+    invoke('get_object_headers', { bucket, region, key, options: options() }),
+  setHeaders: (bucket, region, key, headers) =>
+    invoke('set_object_headers', { bucket, region, key, headers, options: options() }),
+  restore: (bucket, region, key, days) =>
+    invoke('restore_object', { bucket, region, key, days, options: options() }),
+  createSymlink: (bucket, region, sourceKey, symlinkKey) =>
+    invoke('create_symlink', {
+      bucket,
+      region,
+      sourceKey,
+      symlinkKey,
+      options: options(),
+    }),
   folder: (bucket, region, key) =>
     invoke('put_object', {
       bucket,

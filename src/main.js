@@ -14,6 +14,7 @@ import {
   VCardText,
   VCardActions,
   VTextField,
+  VTextarea,
   VSelect,
   VSnackbar,
   VProgressLinear,
@@ -24,6 +25,7 @@ import {
   VSwitch,
   VChip,
   VAlert,
+  VDivider,
 } from 'vuetify/components'
 import { Ripple } from 'vuetify/directives'
 import 'vuetify/styles'
@@ -49,6 +51,7 @@ const vuetify = createVuetify({
     VCardText,
     VCardActions,
     VTextField,
+    VTextarea,
     VSelect,
     VSnackbar,
     VProgressLinear,
@@ -59,6 +62,7 @@ const vuetify = createVuetify({
     VSwitch,
     VChip,
     VAlert,
+    VDivider,
   },
   directives: { Ripple },
   theme: {

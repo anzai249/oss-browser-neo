@@ -126,6 +126,18 @@
     "upload": "上传",
     "download": "下载",
     "delete": "删除",
+    "copy": "复制",
+    "move": "移动",
+    "rename": "重命名",
+    "save": "保存",
+    "acl": "对象 ACL",
+    "httpHeaders": "HTTP 标头",
+    "restore": "解冻归档对象",
+    "symlink": "创建软链接",
+    "getHttpUrl": "获取 HTTP 地址",
+    "addStar": "添加星标",
+    "removeStar": "取消星标",
+    "objectActions": "对象操作",
     "copyOssPath": "复制 OSS 路径",
     "refresh": "刷新",
     "retry": "重试",
@@ -144,7 +156,61 @@
     "done": "已完成",
     "error": "失败",
     "active": "传输中",
+    "waiting": "等待中",
+    "paused": "已暂停",
+    "pause": "暂停上传",
+    "resume": "继续上传",
+    "cancel": "取消上传",
+    "showInBrowser": "在文件浏览器中显示",
     "cancelled": "已取消"
+  },
+  "address": {
+    "title": "获取 HTTP 地址",
+    "description": "为 {name} 创建临时签名链接。",
+    "expiry": "链接有效期",
+    "oneHour": "1 小时",
+    "oneDay": "1 天",
+    "sevenDays": "7 天",
+    "url": "签名 HTTP 地址",
+    "generate": "重新生成",
+    "copy": "复制地址",
+    "warning": "任何获得此链接的人都可在过期前读取对象。生成链接本身不会下载文件。"
+  },
+  "objectOperation": {
+    "copyTitle": "复制对象",
+    "moveTitle": "移动对象",
+    "renameTitle": "重命名对象",
+    "copyDescription": "请输入 {name} 在当前 Bucket 中的完整目标路径。",
+    "moveDescription": "将 {name} 移动到当前 Bucket 中的其他路径。",
+    "renameDescription": "请输入 {name} 的新文件名。",
+    "path": "目标对象路径",
+    "name": "新文件名"
+  },
+  "acl": {
+    "title": "对象 ACL",
+    "description": "设置谁可以读取或写入此对象；Bucket Policy 仍可能授予额外访问权限。",
+    "access": "访问级别",
+    "default": "继承 Bucket ACL",
+    "private": "私有",
+    "publicRead": "公共读",
+    "publicReadWrite": "公共读写",
+    "publicWarning": "公共读写允许互联网中的任何人修改此对象。"
+  },
+  "headers": {
+    "title": "HTTP 标头",
+    "description": "编辑请求此对象时 OSS 返回的标准标头。保存时会在服务端替换对象元数据。"
+  },
+  "restore": {
+    "title": "解冻归档对象",
+    "description": "提交 OSS 解冻请求，并选择解冻副本保持可读的天数。",
+    "days": "可读天数",
+    "submit": "提交解冻"
+  },
+  "symlink": {
+    "title": "创建软链接",
+    "description": "创建一个指向 {name} 的新 OSS 软链接。",
+    "path": "软链接对象路径",
+    "create": "创建链接"
   },
   "settings": {
     "eyebrow": "打造你的工作空间。",
@@ -165,7 +231,7 @@
     "connectTitle": "连接真实 OSS",
     "connect": "可从启动页面或设置管理多组连接。保存不会访问 OSS；连接会先验证权限再切换。可编辑连接信息或更换到期的 STS 凭证。删除保存的连接不会中断当前会话。",
     "scopeTitle": "MVP 支持范围",
-    "scope": "单文件最大 100 MB，按顺序传输，不覆盖同名对象。仅支持删除文件和空文件夹。暂不支持断点续传、文件夹下载和 ACL 编辑。",
+    "scope": "单文件最大 100 MB，分片上传且不覆盖同名对象。上传可在本次会话中暂停、继续或取消。仅支持删除文件和空文件夹，暂不支持文件夹下载与 ACL 编辑。",
     "shortcutsTitle": "快捷键",
     "shortcuts": "按 ⌘ / Ctrl + K 搜索当前文件夹。收藏保存在此设备；切换连接或重启应用会清除传输记录。",
     "explore": "开始探索"
@@ -187,7 +253,14 @@
     "uploadProcessed": "上传处理完成，可在传输记录查看结果",
     "downloaded": "已下载 {name}",
     "deleted": "已删除 {count} 个项目",
-    "pathCopied": "已复制 OSS 路径"
+    "pathCopied": "已复制 OSS 路径",
+    "urlCopied": "已复制 HTTP 地址",
+    "copied": "已复制到 {name}",
+    "moved": "已移动到 {name}",
+    "aclUpdated": "已更新对象 ACL",
+    "headersUpdated": "已更新 HTTP 标头",
+    "restoreRequested": "已提交归档解冻请求",
+    "symlinkCreated": "已创建软链接 {name}"
   },
   "errors": {
     "credentialsRequired": "请填写 AccessKey ID 与 AccessKey Secret。",
@@ -234,7 +307,16 @@
     "previewTooLarge": "图片超过 10 MB 预览上限。",
     "previewCancelled": "已取消图片预览。",
     "invalidRequestOptions": "超时或重试设置无效，请在设置中恢复默认值。",
-    "invalidPageSize": "每页文件数量必须介于 1 至 1000。"
+    "invalidPageSize": "每页文件数量必须介于 1 至 1000。",
+    "multipartInit": "OSS 未返回有效的分片上传 ID。",
+    "invalidUploadPart": "分片上传包含无效的分片。",
+    "uploadPartEtag": "OSS 未返回已上传分片的 ETag。",
+    "invalidSignedUrl": "无法为此对象或有效期创建签名地址。",
+    "invalidCopyTarget": "请输入其他有效的目标路径；暂不支持复制或移动文件夹。",
+    "invalidHeader": "OSS 请求标头包含无效值。",
+    "invalidAcl": "请选择有效的对象 ACL。",
+    "invalidRestore": "归档解冻时间必须介于 1 至 7 天。",
+    "invalidSymlink": "请输入其他有效的软链接路径。"
   },
   "preferences": {
     "browsing": "浏览与预览",

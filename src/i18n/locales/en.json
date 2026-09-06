@@ -126,6 +126,18 @@
     "upload": "Upload",
     "download": "Download",
     "delete": "Delete",
+    "copy": "Copy",
+    "move": "Move",
+    "rename": "Rename",
+    "save": "Save",
+    "acl": "Object ACL",
+    "httpHeaders": "HTTP headers",
+    "restore": "Restore archive",
+    "symlink": "Create symbolic link",
+    "getHttpUrl": "Get HTTP URL",
+    "addStar": "Add to starred",
+    "removeStar": "Remove from starred",
+    "objectActions": "Object actions",
     "copyOssPath": "Copy OSS path",
     "refresh": "Refresh",
     "retry": "Retry",
@@ -144,7 +156,61 @@
     "done": "Completed",
     "error": "Failed",
     "active": "Transferring",
+    "waiting": "Waiting",
+    "paused": "Paused",
+    "pause": "Pause upload",
+    "resume": "Resume upload",
+    "cancel": "Cancel upload",
+    "showInBrowser": "Show in file browser",
     "cancelled": "Cancelled"
+  },
+  "address": {
+    "title": "Get HTTP URL",
+    "description": "Create a temporary signed link for {name}.",
+    "expiry": "Link validity",
+    "oneHour": "1 hour",
+    "oneDay": "1 day",
+    "sevenDays": "7 days",
+    "url": "Signed HTTP URL",
+    "generate": "Generate again",
+    "copy": "Copy URL",
+    "warning": "Anyone with this link can read the object until it expires. Generating the link does not download the file."
+  },
+  "objectOperation": {
+    "copyTitle": "Copy object",
+    "moveTitle": "Move object",
+    "renameTitle": "Rename object",
+    "copyDescription": "Enter the full destination path for {name} in this bucket.",
+    "moveDescription": "Move {name} to another path in this bucket.",
+    "renameDescription": "Enter a new filename for {name}.",
+    "path": "Destination object path",
+    "name": "New filename"
+  },
+  "acl": {
+    "title": "Object ACL",
+    "description": "Set who can read or write this object. The bucket policy may still grant additional access.",
+    "access": "Access level",
+    "default": "Inherit bucket ACL",
+    "private": "Private",
+    "publicRead": "Public read",
+    "publicReadWrite": "Public read and write",
+    "publicWarning": "Public read and write lets anyone on the internet modify this object."
+  },
+  "headers": {
+    "title": "HTTP headers",
+    "description": "Edit the standard headers OSS returns when this object is requested. Saving performs a server-side metadata replacement."
+  },
+  "restore": {
+    "title": "Restore archived object",
+    "description": "Submit an OSS restore request and choose how long the restored copy stays readable.",
+    "days": "Readable days",
+    "submit": "Submit restore"
+  },
+  "symlink": {
+    "title": "Create symbolic link",
+    "description": "Create a new OSS symbolic link that points to {name}.",
+    "path": "Symbolic link object path",
+    "create": "Create link"
   },
   "settings": {
     "eyebrow": "MAKE YOURSELF AT HOME.",
@@ -165,7 +231,7 @@
     "connectTitle": "Connect to OSS",
     "connect": "Manage multiple connections from the startup screen or Settings. Save stores credentials without contacting OSS; Connect verifies access before switching. Edit saved connection details or replace expired STS credentials. Deleting a saved connection does not disconnect the active session.",
     "scopeTitle": "MVP scope",
-    "scope": "Files are limited to 100 MB and transferred sequentially without overwriting existing objects. Only files and empty folders can be deleted. Resumable transfers, folder downloads, and ACL editing are not yet supported.",
+    "scope": "Files are limited to 100 MB and uploaded in parts without overwriting existing objects. Uploads can be paused, resumed or cancelled during this session. Only files and empty folders can be deleted. Folder downloads and ACL editing are not yet supported.",
     "shortcutsTitle": "Keyboard shortcuts",
     "shortcuts": "Press ⌘ / Ctrl + K to search this folder. Stars are saved on this device. Transfer history resets when the connection changes or the app restarts.",
     "explore": "Start exploring"
@@ -187,7 +253,14 @@
     "uploadProcessed": "Uploads processed. Check Transfers for the results.",
     "downloaded": "Downloaded {name}",
     "deleted": "No items deleted | Deleted {count} item | Deleted {count} items",
-    "pathCopied": "OSS path copied"
+    "pathCopied": "OSS path copied",
+    "urlCopied": "HTTP URL copied",
+    "copied": "Copied to {name}",
+    "moved": "Moved to {name}",
+    "aclUpdated": "Object ACL updated",
+    "headersUpdated": "HTTP headers updated",
+    "restoreRequested": "Archive restore requested",
+    "symlinkCreated": "Created symbolic link {name}"
   },
   "errors": {
     "credentialsRequired": "Enter your AccessKey ID and AccessKey Secret.",
@@ -234,7 +307,16 @@
     "previewTooLarge": "This image exceeds the 10 MB preview limit.",
     "previewCancelled": "Image preview cancelled.",
     "invalidRequestOptions": "Invalid timeout or retry settings. Restore the defaults in Settings.",
-    "invalidPageSize": "Files per page must be between 1 and 1000."
+    "invalidPageSize": "Files per page must be between 1 and 1000.",
+    "multipartInit": "OSS did not return a valid multipart upload ID.",
+    "invalidUploadPart": "The multipart upload contains an invalid part.",
+    "uploadPartEtag": "OSS did not return an ETag for the uploaded part.",
+    "invalidSignedUrl": "Unable to create a signed URL for this object or expiry.",
+    "invalidCopyTarget": "Enter a different valid destination path. Folders cannot be copied or moved yet.",
+    "invalidHeader": "An OSS request header contains an invalid value.",
+    "invalidAcl": "Select a valid object ACL.",
+    "invalidRestore": "Archive restore duration must be between 1 and 7 days.",
+    "invalidSymlink": "Enter a different valid symbolic link path."
   },
   "preferences": {
     "browsing": "Browsing & preview",

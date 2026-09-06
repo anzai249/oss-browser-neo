@@ -27,6 +27,7 @@ export const fileIcon = (item) =>
     txt: 'text-box-outline',
   })[fileKind(item)] || 'file-outline'
 export function useWorkspace(api = oss) {
+  const uploadRuntime = new Map()
   const mode = ref('disconnected'),
     buckets = ref([]),
     bucket = ref(null),
@@ -48,7 +49,9 @@ export function useWorkspace(api = oss) {
   function trimTransfers() {
     let completed = 0
     transfers.value = transfers.value.filter(
-      (task) => task.status === 'active' || ++completed <= preferences.historyLimit,
+      (task) =>
+        ['waiting', 'active', 'paused'].includes(task.status) ||
+        ++completed <= preferences.historyLimit,
     )
   }
   watch(() => preferences.historyLimit, trimTransfers)
@@ -221,37 +224,209 @@ export function useWorkspace(api = oss) {
     }
   }
   async function upload(files) {
-    if (!files.length || busy.value || !bucket.value) return
-    busy.value = true
+    if (!files.length || !bucket.value) return
     const targetBucket = bucket.value.name,
       targetRegion = bucket.value.region,
       targetPrefix = prefix.value
+    const queued = []
     for (const file of files) {
       const task = {
         id: crypto.randomUUID(),
         name: file.name,
         size: file.size,
+        loaded: 0,
+        progress: 0,
+        speed: 0,
         direction: 'upload',
-        status: 'active',
+        status: 'waiting',
         bucket: targetBucket,
+        region: targetRegion,
+        key: targetPrefix + file.name,
         error: '',
       }
       transfers.value.unshift(task)
-      const stored = transfers.value[0]
+      uploadRuntime.set(task.id, { wake: null, uploadId: '' })
+      queued.push({ task, file })
+    }
+    for (const { task, file } of queued) {
+      const runtime = uploadRuntime.get(task.id)
+      if (!runtime) continue
+      if (task.status === 'cancelled') {
+        uploadRuntime.delete(task.id)
+        continue
+      }
       try {
         if (file.size > 100 * 1024 * 1024) throw new Error('errors.fileLimit')
-        const key = targetPrefix + file.name
-        await api.upload(targetBucket, targetRegion, key, file)
-        stored.status = 'done'
+        task.status = 'active'
+        const started = performance.now()
+        let sampledAt = started
+        let sampledBytes = 0
+        if (file.size > 0 && api.startUpload && api.uploadPart && api.completeUpload) {
+          runtime.uploadId = await api.startUpload(task.bucket, task.region, task.key, file.type)
+          const parts = []
+          const partSize = 1024 * 1024
+          for (let offset = 0, partNumber = 1; offset < file.size; partNumber++) {
+            while (task.status === 'paused')
+              await new Promise((resolve) => {
+                runtime.wake = resolve
+              })
+            if (task.status === 'cancelled') break
+            const end = Math.min(offset + partSize, file.size)
+            const etag = await api.uploadPart(
+              task.bucket,
+              task.region,
+              task.key,
+              runtime.uploadId,
+              partNumber,
+              file.slice(offset, end),
+            )
+            parts.push({ partNumber, etag })
+            offset = end
+            const now = performance.now()
+            task.loaded = offset
+            task.progress = file.size ? Math.round((offset / file.size) * 1000) / 10 : 100
+            task.speed = Math.round(((offset - sampledBytes) * 1000) / Math.max(now - sampledAt, 1))
+            sampledAt = now
+            sampledBytes = offset
+          }
+          if (task.status !== 'cancelled') {
+            await api.completeUpload(task.bucket, task.region, task.key, runtime.uploadId, parts)
+          }
+        } else {
+          await api.upload(task.bucket, task.region, task.key, file)
+          task.loaded = file.size
+          task.progress = 100
+          task.speed = Math.round((file.size * 1000) / Math.max(performance.now() - started, 1))
+        }
+        if (task.status !== 'cancelled') {
+          task.loaded = file.size
+          task.progress = 100
+          task.speed = 0
+          task.status = 'done'
+        }
       } catch (e) {
-        stored.status = 'error'
-        stored.error = String(e)
+        if (task.status !== 'cancelled') {
+          task.status = 'error'
+          task.error = String(e)
+        }
+      } finally {
+        if (['cancelled', 'error'].includes(task.status) && runtime.uploadId && api.abortUpload) {
+          try {
+            await api.abortUpload(task.bucket, task.region, task.key, runtime.uploadId)
+          } catch {
+            /* Cancellation already won; OSS may have removed the multipart upload. */
+          }
+        }
+        uploadRuntime.delete(task.id)
       }
     }
-    busy.value = false
-    await refresh()
+    if (bucket.value?.name === targetBucket && prefix.value === targetPrefix) await refresh()
     trimTransfers()
     toast.value = 'feedback.uploadProcessed'
+  }
+  function pauseUpload(id) {
+    const task = transfers.value.find((item) => item.id === id)
+    if (task?.status === 'active') task.status = 'paused'
+  }
+  function resumeUpload(id) {
+    const task = transfers.value.find((item) => item.id === id)
+    const runtime = uploadRuntime.get(id)
+    if (task?.status !== 'paused' || !runtime) return
+    task.status = 'active'
+    runtime.wake?.()
+    runtime.wake = null
+  }
+  function cancelUpload(id) {
+    const task = transfers.value.find((item) => item.id === id)
+    const runtime = uploadRuntime.get(id)
+    if (!task || !['waiting', 'active', 'paused'].includes(task.status)) return
+    task.status = 'cancelled'
+    task.speed = 0
+    runtime?.wake?.()
+    if (runtime) runtime.wake = null
+  }
+  async function showTransfer(task) {
+    if (task.direction !== 'upload' || task.status !== 'done') return null
+    const target = buckets.value.find((item) => item.name === task.bucket)
+    if (!target) return null
+    if (bucket.value?.name !== target.name) await changeBucket(target)
+    const slash = task.key.lastIndexOf('/')
+    const parent = slash < 0 ? '' : task.key.slice(0, slash + 1)
+    if (prefix.value !== parent) await navigate(parent)
+    else await refresh()
+    view.value = 'files'
+    search.value = ''
+    const item = objects.value.find((object) => object.key === task.key) || null
+    if (item) {
+      focused.value = item
+      selection.value = [item.key]
+    }
+    return item
+  }
+  const createSignedUrl = (item, expiresSeconds) =>
+    api.signedUrl(bucket.value.name, bucket.value.region, item.key, expiresSeconds)
+  async function copyObject(item, targetKey, move = false) {
+    if (!bucket.value || item.isFolder || busy.value) return
+    const clean = targetKey.trim().replace(/^\/+/, '')
+    if (
+      !clean ||
+      clean.endsWith('/') ||
+      clean === item.key ||
+      /[\x00-\x1f]/.test(clean) ||
+      clean.split('/').some((part) => part === '.' || part === '..')
+    )
+      throw new Error('errors.invalidCopyTarget')
+    busy.value = true
+    try {
+      await api.copyObject(bucket.value.name, bucket.value.region, item.key, clean, move)
+      await refresh()
+      toast.value = { key: move ? 'feedback.moved' : 'feedback.copied', params: { name: clean } }
+    } finally {
+      busy.value = false
+    }
+  }
+  async function mutateObject(operation, feedback) {
+    if (!bucket.value || busy.value) return
+    busy.value = true
+    try {
+      await operation(bucket.value.name, bucket.value.region)
+      await refresh()
+      toast.value = feedback
+    } finally {
+      busy.value = false
+    }
+  }
+  const setObjectAcl = (item, acl) =>
+    mutateObject(
+      (bucketName, region) => api.setAcl(bucketName, region, item.key, acl),
+      'feedback.aclUpdated',
+    )
+  const getObjectHeaders = (item) =>
+    api.getHeaders(bucket.value.name, bucket.value.region, item.key)
+  const setObjectHeaders = (item, headers) =>
+    mutateObject(
+      (bucketName, region) => api.setHeaders(bucketName, region, item.key, headers),
+      'feedback.headersUpdated',
+    )
+  const restoreObject = (item, days) =>
+    mutateObject(
+      (bucketName, region) => api.restore(bucketName, region, item.key, days),
+      'feedback.restoreRequested',
+    )
+  async function createObjectSymlink(item, symlinkKey) {
+    const clean = symlinkKey.trim().replace(/^\/+/, '')
+    if (
+      !clean ||
+      clean.endsWith('/') ||
+      clean === item.key ||
+      /[\x00-\x1f]/.test(clean) ||
+      clean.split('/').some((part) => part === '.' || part === '..')
+    )
+      throw new Error('errors.invalidSymlink')
+    return mutateObject(
+      (bucketName, region) => api.createSymlink(bucketName, region, item.key, clean),
+      { key: 'feedback.symlinkCreated', params: { name: clean } },
+    )
   }
   async function download(item) {
     if (item.isFolder || busy.value || !bucket.value) return
@@ -327,6 +502,17 @@ export function useWorkspace(api = oss) {
     disconnect,
     createFolder,
     upload,
+    pauseUpload,
+    resumeUpload,
+    cancelUpload,
+    showTransfer,
+    createSignedUrl,
+    copyObject,
+    setObjectAcl,
+    getObjectHeaders,
+    setObjectHeaders,
+    restoreObject,
+    createObjectSymlink,
     download,
     removeSelected,
     desktop,

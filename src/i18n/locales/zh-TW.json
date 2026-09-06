@@ -126,6 +126,18 @@
     "upload": "上傳",
     "download": "下載",
     "delete": "刪除",
+    "copy": "複製",
+    "move": "移動",
+    "rename": "重新命名",
+    "save": "儲存",
+    "acl": "物件 ACL",
+    "httpHeaders": "HTTP 標頭",
+    "restore": "還原封存物件",
+    "symlink": "建立軟連結",
+    "getHttpUrl": "取得 HTTP 網址",
+    "addStar": "加上星號",
+    "removeStar": "取消星號",
+    "objectActions": "物件操作",
     "copyOssPath": "複製 OSS 路徑",
     "refresh": "重新整理",
     "retry": "重試",
@@ -144,7 +156,61 @@
     "done": "已完成",
     "error": "失敗",
     "active": "傳輸中",
+    "waiting": "等待中",
+    "paused": "已暫停",
+    "pause": "暫停上傳",
+    "resume": "繼續上傳",
+    "cancel": "取消上傳",
+    "showInBrowser": "在檔案瀏覽器中顯示",
     "cancelled": "已取消"
+  },
+  "address": {
+    "title": "取得 HTTP 網址",
+    "description": "為 {name} 建立暫時簽名連結。",
+    "expiry": "連結有效期限",
+    "oneHour": "1 小時",
+    "oneDay": "1 天",
+    "sevenDays": "7 天",
+    "url": "簽名 HTTP 網址",
+    "generate": "重新產生",
+    "copy": "複製網址",
+    "warning": "任何取得此連結的人都可在過期前讀取物件。產生連結本身不會下載檔案。"
+  },
+  "objectOperation": {
+    "copyTitle": "複製物件",
+    "moveTitle": "移動物件",
+    "renameTitle": "重新命名物件",
+    "copyDescription": "請輸入 {name} 在目前 Bucket 中的完整目標路徑。",
+    "moveDescription": "將 {name} 移動到目前 Bucket 中的其他路徑。",
+    "renameDescription": "請輸入 {name} 的新檔名。",
+    "path": "目標物件路徑",
+    "name": "新檔名"
+  },
+  "acl": {
+    "title": "物件 ACL",
+    "description": "設定誰可以讀取或寫入此物件；Bucket Policy 仍可能授予額外存取權。",
+    "access": "存取層級",
+    "default": "繼承 Bucket ACL",
+    "private": "私人",
+    "publicRead": "公開讀取",
+    "publicReadWrite": "公開讀寫",
+    "publicWarning": "公開讀寫允許網際網路中的任何人修改此物件。"
+  },
+  "headers": {
+    "title": "HTTP 標頭",
+    "description": "編輯要求此物件時 OSS 回傳的標準標頭。儲存時會在伺服器端取代物件中繼資料。"
+  },
+  "restore": {
+    "title": "還原封存物件",
+    "description": "提交 OSS 還原要求，並選擇還原副本保持可讀的天數。",
+    "days": "可讀天數",
+    "submit": "提交還原"
+  },
+  "symlink": {
+    "title": "建立軟連結",
+    "description": "建立一個指向 {name} 的新 OSS 軟連結。",
+    "path": "軟連結物件路徑",
+    "create": "建立連結"
   },
   "settings": {
     "eyebrow": "MAKE YOURSELF AT HOME.",
@@ -165,7 +231,7 @@
     "connectTitle": "連接真實 OSS",
     "connect": "可從啟動畫面或設定管理多組連線。儲存不會存取 OSS；連線會先驗證權限再切換。可編輯連線資訊或更換到期的 STS 憑證。刪除儲存的連線不會中斷目前工作階段。",
     "scopeTitle": "MVP 支援範圍",
-    "scope": "單一檔案最大 100 MB，依序傳輸，不覆寫同名物件。僅支援刪除檔案與空資料夾。暫不支援斷點續傳、資料夾下載與 ACL 編輯。",
+    "scope": "單一檔案最大 100 MB，分片上傳且不覆寫同名物件。上傳可在本次工作階段中暫停、繼續或取消。僅支援刪除檔案與空資料夾，暫不支援資料夾下載與 ACL 編輯。",
     "shortcutsTitle": "快捷鍵",
     "shortcuts": "按 ⌘ / Ctrl + K 搜尋目前資料夾。收藏儲存在此裝置；切換連線或重新啟動應用程式會清除傳輸紀錄。",
     "explore": "開始探索"
@@ -187,7 +253,14 @@
     "uploadProcessed": "上傳處理完成，可在傳輸紀錄查看結果",
     "downloaded": "已下載 {name}",
     "deleted": "已刪除 {count} 個項目",
-    "pathCopied": "已複製 OSS 路徑"
+    "pathCopied": "已複製 OSS 路徑",
+    "urlCopied": "已複製 HTTP 網址",
+    "copied": "已複製至 {name}",
+    "moved": "已移動至 {name}",
+    "aclUpdated": "已更新物件 ACL",
+    "headersUpdated": "已更新 HTTP 標頭",
+    "restoreRequested": "已提交封存還原要求",
+    "symlinkCreated": "已建立軟連結 {name}"
   },
   "errors": {
     "credentialsRequired": "請填寫 AccessKey ID 與 AccessKey Secret。",
@@ -234,7 +307,16 @@
     "previewTooLarge": "圖片超過 10 MB 預覽上限。",
     "previewCancelled": "已取消圖片預覽。",
     "invalidRequestOptions": "逾時或重試設定無效，請在設定中還原預設值。",
-    "invalidPageSize": "每頁檔案數量必須介於 1 至 1000。"
+    "invalidPageSize": "每頁檔案數量必須介於 1 至 1000。",
+    "multipartInit": "OSS 未回傳有效的分片上傳 ID。",
+    "invalidUploadPart": "分片上傳包含無效的分片。",
+    "uploadPartEtag": "OSS 未回傳已上傳分片的 ETag。",
+    "invalidSignedUrl": "無法為此物件或有效期限建立簽名網址。",
+    "invalidCopyTarget": "請輸入其他有效的目標路徑；暫不支援複製或移動資料夾。",
+    "invalidHeader": "OSS 請求標頭包含無效值。",
+    "invalidAcl": "請選擇有效的物件 ACL。",
+    "invalidRestore": "封存還原時間必須介於 1 至 7 天。",
+    "invalidSymlink": "請輸入其他有效的軟連結路徑。"
   },
   "preferences": {
     "browsing": "瀏覽與預覽",

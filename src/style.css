@@ -887,6 +887,21 @@ tr:focus-within .star-button,
   color: #c36558;
   overflow-wrap: anywhere;
 }
+.transfer-metrics {
+  font-variant-numeric: tabular-nums;
+}
+.transfer-actions {
+  display: flex;
+  min-width: 170px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.transfer-action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
 .task-status {
   display: flex;
   align-items: center;
@@ -899,6 +914,20 @@ tr:focus-within .star-button,
 }
 .task-status.error {
   color: #c36558;
+}
+.task-status.paused,
+.task-status.waiting {
+  color: #8a7449;
+}
+.signed-url-field textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.header-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 .settings-card {
   display: flex;
@@ -1285,6 +1314,18 @@ tr:focus-within .star-button,
   .transfer-row {
     padding: 12px 16px;
     gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .transfer-actions {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-fields {
+    grid-template-columns: 1fr;
   }
   .task-status {
     font-size: 9px;

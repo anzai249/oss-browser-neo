@@ -150,6 +150,174 @@ test('upload keeps file bytes and bucket destination, records server errors and 
   assert.equal(w.busy.value, false)
 })
 
+test('multipart upload reports progress and speed, pauses between parts, then resumes', async () => {
+  let releaseFirstPart
+  const uploadedParts = []
+  let completedParts
+  const w = useWorkspace(
+    api({
+      startUpload: async () => 'upload-1',
+      uploadPart: async (_bucket, _region, _key, uploadId, partNumber, blob) => {
+        uploadedParts.push({ uploadId, partNumber, size: blob.size })
+        if (partNumber === 1)
+          await new Promise((resolve) => {
+            releaseFirstPart = resolve
+          })
+        return `"etag-${partNumber}"`
+      },
+      completeUpload: async (_bucket, _region, _key, _uploadId, parts) => {
+        completedParts = parts
+      },
+      abortUpload: () => assert.fail('a resumed upload must not be aborted'),
+    }),
+  )
+  await w.connect({})
+  const payload = new Uint8Array(2 * 1024 * 1024 + 17)
+  const pending = w.upload([new File([payload], 'movie.bin')])
+  while (!releaseFirstPart) await Promise.resolve()
+  const task = w.transfers.value[0]
+  assert.equal(task.status, 'active')
+  w.pauseUpload(task.id)
+  releaseFirstPart()
+  while (task.loaded === 0) await Promise.resolve()
+  assert.equal(task.status, 'paused')
+  assert.equal(uploadedParts.length, 1)
+  assert.equal(task.progress, 50)
+  assert.ok(task.speed > 0)
+  w.resumeUpload(task.id)
+  await pending
+  assert.equal(task.status, 'done')
+  assert.equal(task.progress, 100)
+  assert.equal(task.loaded, payload.length)
+  assert.deepEqual(
+    uploadedParts.map((part) => part.size),
+    [1024 * 1024, 1024 * 1024, 17],
+  )
+  assert.deepEqual(
+    completedParts.map((part) => part.partNumber),
+    [1, 2, 3],
+  )
+})
+
+test('cancelling a multipart upload aborts it and completed uploads can be revealed', async () => {
+  let releasePart
+  const aborted = []
+  let completed = false
+  let currentPrefix = ''
+  const w = useWorkspace(
+    api({
+      list: async (_bucket, _region, prefix) => {
+        currentPrefix = prefix
+        return {
+          objects: prefix === 'uploads/' ? [item('uploads/final.bin')] : [],
+          nextMarker: '',
+        }
+      },
+      startUpload: async () => 'upload-cancel',
+      uploadPart: async () => {
+        await new Promise((resolve) => {
+          releasePart = resolve
+        })
+        return '"etag"'
+      },
+      completeUpload: async () => {
+        completed = true
+      },
+      abortUpload: async (...args) => aborted.push(args),
+      signedUrl: async (...args) => `https://signed.example/${args[2]}?expires=${args[3]}`,
+    }),
+  )
+  await w.connect({})
+  const pending = w.upload([new File([new Uint8Array(2 * 1024 * 1024)], 'cancel.bin')])
+  while (!releasePart) await Promise.resolve()
+  const task = w.transfers.value[0]
+  w.cancelUpload(task.id)
+  releasePart()
+  await pending
+  assert.equal(task.status, 'cancelled')
+  assert.equal(completed, false)
+  assert.deepEqual(aborted[0].slice(2), ['cancel.bin', 'upload-cancel'])
+
+  const finished = {
+    direction: 'upload',
+    status: 'done',
+    bucket: 'test-bucket',
+    key: 'uploads/final.bin',
+  }
+  const revealed = await w.showTransfer(finished)
+  assert.equal(currentPrefix, 'uploads/')
+  assert.equal(w.view.value, 'files')
+  assert.equal(revealed.key, 'uploads/final.bin')
+  assert.equal(w.focused.value.key, revealed.key)
+  assert.deepEqual(w.selection.value, [revealed.key])
+  assert.equal(
+    await w.createSignedUrl(revealed, 3600),
+    'https://signed.example/uploads/final.bin?expires=3600',
+  )
+})
+
+test('copy, move and rename pass validated object paths and refresh the folder', async () => {
+  const operations = []
+  let lists = 0
+  const w = useWorkspace(
+    api({
+      list: async () => {
+        lists++
+        return { objects: [item('folder/report.txt')], nextMarker: '' }
+      },
+      copyObject: async (...args) => operations.push(args),
+    }),
+  )
+  await w.connect({})
+  const source = item('folder/report.txt')
+  await w.copyObject(source, ' archive/report-copy.txt ', false)
+  await w.copyObject(source, 'folder/renamed.txt', true)
+  assert.deepEqual(operations, [
+    ['test-bucket', 'oss-cn-hangzhou', 'folder/report.txt', 'archive/report-copy.txt', false],
+    ['test-bucket', 'oss-cn-hangzhou', 'folder/report.txt', 'folder/renamed.txt', true],
+  ])
+  assert.equal(lists, 3)
+  await assert.rejects(w.copyObject(source, source.key, false), /invalidCopyTarget/)
+  await assert.rejects(w.copyObject(source, '../', false), /invalidCopyTarget/)
+})
+
+test('object ACL, headers, restore and symbolic link operations delegate and refresh safely', async () => {
+  const calls = []
+  const source = item('folder/archive.zip')
+  const headers = {
+    contentType: 'application/zip',
+    cacheControl: 'private',
+    metadata: { 'x-oss-meta-owner': 'team' },
+  }
+  const w = useWorkspace(
+    api({
+      setAcl: async (...args) => calls.push(['acl', ...args]),
+      getHeaders: async (...args) => {
+        calls.push(['getHeaders', ...args])
+        return headers
+      },
+      setHeaders: async (...args) => calls.push(['setHeaders', ...args]),
+      restore: async (...args) => calls.push(['restore', ...args]),
+      createSymlink: async (...args) => calls.push(['symlink', ...args]),
+    }),
+  )
+  await w.connect({})
+  assert.equal(await w.getObjectHeaders(source), headers)
+  await w.setObjectAcl(source, 'private')
+  await w.setObjectHeaders(source, headers)
+  await w.restoreObject(source, 3)
+  await w.createObjectSymlink(source, ' links/archive.zip ')
+  assert.deepEqual(calls, [
+    ['getHeaders', 'test-bucket', 'oss-cn-hangzhou', source.key],
+    ['acl', 'test-bucket', 'oss-cn-hangzhou', source.key, 'private'],
+    ['setHeaders', 'test-bucket', 'oss-cn-hangzhou', source.key, headers],
+    ['restore', 'test-bucket', 'oss-cn-hangzhou', source.key, 3],
+    ['symlink', 'test-bucket', 'oss-cn-hangzhou', source.key, 'links/archive.zip'],
+  ])
+  await assert.rejects(w.createObjectSymlink(source, source.key), /invalidSymlink/)
+  assert.equal(w.busy.value, false)
+})
+
 test('download distinguishes save success, cancellation and failure', async () => {
   let outcome = false
   const w = useWorkspace(

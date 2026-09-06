@@ -82,6 +82,18 @@ struct ObjectList {
     #[serde(default)]
     next_continuation_token: String,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct MultipartUploadResult {
+    upload_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedPart {
+    part_number: u32,
+    etag: String,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
@@ -96,6 +108,20 @@ pub struct Object {
 pub struct ObjectPage {
     objects: Vec<Object>,
     next_marker: String,
+}
+#[derive(Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectHttpHeaders {
+    content_type: String,
+    content_encoding: String,
+    content_language: String,
+    cache_control: String,
+    content_disposition: String,
+    expires: String,
+    #[serde(default)]
+    storage_class: String,
+    #[serde(default)]
+    metadata: BTreeMap<String, String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -255,6 +281,36 @@ async fn request(
     query: &[(&str, String)],
     body: Option<Vec<u8>>,
     content_type: &str,
+    forbid_overwrite: bool,
+    options: &RequestOptions,
+) -> Result<reqwest::Response, String> {
+    request_with_headers(
+        c,
+        method,
+        bucket,
+        region,
+        key,
+        query,
+        body,
+        content_type,
+        forbid_overwrite,
+        &[],
+        options,
+    )
+    .await
+}
+
+async fn request_with_headers(
+    c: &Credentials,
+    method: Method,
+    bucket: &str,
+    region: &str,
+    key: &str,
+    query: &[(&str, String)],
+    body: Option<Vec<u8>>,
+    content_type: &str,
+    forbid_overwrite: bool,
+    extra_headers: &[(String, String)],
     options: &RequestOptions,
 ) -> Result<reqwest::Response, String> {
     options.validate()?;
@@ -303,7 +359,15 @@ async fn request(
         }
         if body.is_some() {
             headers.insert("content-type".into(), content_type.into());
+        }
+        if forbid_overwrite {
             headers.insert("x-oss-forbid-overwrite".into(), "true".into());
+        }
+        for (key, value) in extra_headers {
+            if value.contains(['\r', '\n']) {
+                return Err("errors.invalidHeader".into());
+            }
+            headers.insert(key.to_ascii_lowercase(), value.trim().to_string());
         }
         let auth = authorization(
             c,
@@ -407,6 +471,7 @@ async fn list_page(
             &query,
             None,
             "",
+            false,
             options,
         )
         .await?,
@@ -510,6 +575,7 @@ pub async fn connect_oss(
                     &query,
                     None,
                     "",
+                    false,
                     &options,
                 )
                 .await?,
@@ -609,6 +675,489 @@ pub async fn put_object(
         &[],
         Some(data),
         &content_type,
+        true,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_multipart_upload(
+    bucket: String,
+    region: String,
+    key: String,
+    content_type: String,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<String, String> {
+    if key.is_empty() {
+        return Err("errors.emptyKey".into());
+    }
+    let bytes = read_limited(
+        request(
+            &credentials(&state)?,
+            Method::POST,
+            &bucket,
+            &region,
+            &key,
+            &[("uploads", String::new())],
+            None,
+            &content_type,
+            false,
+            &options.unwrap_or_default(),
+        )
+        .await?,
+        1024 * 1024,
+    )
+    .await?;
+    let result: MultipartUploadResult = quick_xml::de::from_reader(bytes.as_slice())
+        .map_err(|_| "errors.multipartInit".to_string())?;
+    if result.upload_id.is_empty() {
+        return Err("errors.multipartInit".into());
+    }
+    Ok(result.upload_id)
+}
+
+#[tauri::command]
+pub async fn upload_part(
+    bucket: String,
+    region: String,
+    key: String,
+    upload_id: String,
+    part_number: u32,
+    data: Vec<u8>,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<String, String> {
+    if !(1..=10_000).contains(&part_number) || data.is_empty() || data.len() > MAX_FILE_SIZE {
+        return Err("errors.invalidUploadPart".into());
+    }
+    let response = request(
+        &credentials(&state)?,
+        Method::PUT,
+        &bucket,
+        &region,
+        &key,
+        &[
+            ("partNumber", part_number.to_string()),
+            ("uploadId", upload_id),
+        ],
+        Some(data),
+        "application/octet-stream",
+        false,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    response
+        .headers()
+        .get("etag")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned)
+        .ok_or_else(|| "errors.uploadPartEtag".to_string())
+}
+
+#[tauri::command]
+pub async fn complete_multipart_upload(
+    bucket: String,
+    region: String,
+    key: String,
+    upload_id: String,
+    parts: Vec<CompletedPart>,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if parts.is_empty() || parts.len() > 10_000 {
+        return Err("errors.invalidUploadPart".into());
+    }
+    let mut xml = String::from("<CompleteMultipartUpload>");
+    for part in parts {
+        if !(1..=10_000).contains(&part.part_number)
+            || part.etag.chars().any(|c| matches!(c, '<' | '>' | '&'))
+        {
+            return Err("errors.invalidUploadPart".into());
+        }
+        xml.push_str(&format!(
+            "<Part><PartNumber>{}</PartNumber><ETag>{}</ETag></Part>",
+            part.part_number, part.etag
+        ));
+    }
+    xml.push_str("</CompleteMultipartUpload>");
+    request(
+        &credentials(&state)?,
+        Method::POST,
+        &bucket,
+        &region,
+        &key,
+        &[("uploadId", upload_id)],
+        Some(xml.into_bytes()),
+        "application/xml",
+        true,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn abort_multipart_upload(
+    bucket: String,
+    region: String,
+    key: String,
+    upload_id: String,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    request(
+        &credentials(&state)?,
+        Method::DELETE,
+        &bucket,
+        &region,
+        &key,
+        &[("uploadId", upload_id)],
+        None,
+        "",
+        false,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn signed_object_url(
+    bucket: String,
+    region: String,
+    key: String,
+    expires_seconds: u32,
+    state: State<'_, OssState>,
+) -> Result<String, String> {
+    let c = credentials(&state)?;
+    signed_object_url_at(
+        &c,
+        &bucket,
+        &region,
+        &key,
+        expires_seconds,
+        &Utc::now().format("%Y%m%dT%H%M%SZ").to_string(),
+    )
+}
+
+fn signed_object_url_at(
+    c: &Credentials,
+    bucket: &str,
+    region: &str,
+    key: &str,
+    expires_seconds: u32,
+    timestamp: &str,
+) -> Result<String, String> {
+    if !(60..=604_800).contains(&expires_seconds) || key.is_empty() || key.ends_with('/') {
+        return Err("errors.invalidSignedUrl".into());
+    }
+    if timestamp.len() != 16 || !timestamp.ends_with('Z') {
+        return Err("errors.invalidSignedUrl".into());
+    }
+    validate_bucket(bucket)?;
+    validate_key(key)?;
+    let region = validate_region(region)?;
+    let scope = format!("{}/{region}/oss/aliyun_v4_request", &timestamp[..8]);
+    let host = format!("{bucket}.oss-{region}.aliyuncs.com");
+    let mut query = vec![
+        ("x-oss-additional-headers", "host".to_string()),
+        ("x-oss-credential", format!("{}/{scope}", c.access_key_id)),
+        ("x-oss-date", timestamp.to_string()),
+        ("x-oss-expires", expires_seconds.to_string()),
+        ("x-oss-signature-version", "OSS4-HMAC-SHA256".to_string()),
+    ];
+    if !c.security_token.is_empty() {
+        query.push(("x-oss-security-token", c.security_token.clone()));
+    }
+    let canonical_query = canonical_query(&query);
+    let canonical = format!(
+        "GET\n/{}\n{canonical_query}\nhost:{host}\n\nhost\nUNSIGNED-PAYLOAD",
+        encode(key, true)
+    );
+    let to_sign = format!(
+        "OSS4-HMAC-SHA256\n{timestamp}\n{scope}\n{}",
+        hex::encode(Sha256::digest(canonical.as_bytes()))
+    );
+    let signature = hex::encode(hmac(
+        &signing_key(&c.access_key_secret, &timestamp[..8], &region),
+        &to_sign,
+    ));
+    Ok(format!(
+        "https://{host}/{}?{canonical_query}&x-oss-signature={signature}",
+        encode(key, true)
+    ))
+}
+
+#[tauri::command]
+pub async fn copy_object(
+    bucket: String,
+    region: String,
+    source_key: String,
+    target_key: String,
+    delete_source: bool,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if source_key.is_empty()
+        || target_key.is_empty()
+        || source_key.ends_with('/')
+        || target_key.ends_with('/')
+        || source_key == target_key
+    {
+        return Err("errors.invalidCopyTarget".into());
+    }
+    validate_key(&source_key)?;
+    validate_key(&target_key)?;
+    validate_bucket(&bucket)?;
+    let c = credentials(&state)?;
+    let options = options.unwrap_or_default();
+    request_with_headers(
+        &c,
+        Method::PUT,
+        &bucket,
+        &region,
+        &target_key,
+        &[],
+        None,
+        "",
+        true,
+        &[(
+            "x-oss-copy-source".into(),
+            format!("/{bucket}/{}", encode(&source_key, true)),
+        )],
+        &options,
+    )
+    .await?;
+    if delete_source {
+        request(
+            &c,
+            Method::DELETE,
+            &bucket,
+            &region,
+            &source_key,
+            &[],
+            None,
+            "",
+            false,
+            &options,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_object_acl(
+    bucket: String,
+    region: String,
+    key: String,
+    acl: String,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if key.is_empty()
+        || key.ends_with('/')
+        || !matches!(
+            acl.as_str(),
+            "default" | "private" | "public-read" | "public-read-write"
+        )
+    {
+        return Err("errors.invalidAcl".into());
+    }
+    request_with_headers(
+        &credentials(&state)?,
+        Method::PUT,
+        &bucket,
+        &region,
+        &key,
+        &[("acl", String::new())],
+        None,
+        "",
+        false,
+        &[("x-oss-object-acl".into(), acl)],
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+fn response_header(response: &reqwest::Response, name: &str) -> String {
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
+}
+
+#[tauri::command]
+pub async fn get_object_headers(
+    bucket: String,
+    region: String,
+    key: String,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<ObjectHttpHeaders, String> {
+    if key.is_empty() || key.ends_with('/') {
+        return Err("errors.invalidKey".into());
+    }
+    let response = request(
+        &credentials(&state)?,
+        Method::HEAD,
+        &bucket,
+        &region,
+        &key,
+        &[],
+        None,
+        "",
+        false,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    let metadata = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            let name = name.as_str();
+            (name.starts_with("x-oss-meta-"))
+                .then(|| value.to_str().ok().map(|value| (name.into(), value.into())))
+                .flatten()
+        })
+        .collect();
+    Ok(ObjectHttpHeaders {
+        content_type: response_header(&response, "content-type"),
+        content_encoding: response_header(&response, "content-encoding"),
+        content_language: response_header(&response, "content-language"),
+        cache_control: response_header(&response, "cache-control"),
+        content_disposition: response_header(&response, "content-disposition"),
+        expires: response_header(&response, "expires"),
+        storage_class: response_header(&response, "x-oss-storage-class"),
+        metadata,
+    })
+}
+
+#[tauri::command]
+pub async fn set_object_headers(
+    bucket: String,
+    region: String,
+    key: String,
+    headers: ObjectHttpHeaders,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if key.is_empty() || key.ends_with('/') {
+        return Err("errors.invalidKey".into());
+    }
+    let mut extra_headers = vec![
+        (
+            "x-oss-copy-source".into(),
+            format!("/{bucket}/{}", encode(&key, true)),
+        ),
+        ("x-oss-metadata-directive".into(), "REPLACE".into()),
+    ];
+    for (name, value) in [
+        ("content-type", headers.content_type),
+        ("content-encoding", headers.content_encoding),
+        ("content-language", headers.content_language),
+        ("cache-control", headers.cache_control),
+        ("content-disposition", headers.content_disposition),
+        ("expires", headers.expires),
+    ] {
+        if !value.trim().is_empty() {
+            extra_headers.push((name.into(), value));
+        }
+    }
+    if !headers.storage_class.trim().is_empty() {
+        extra_headers.push(("x-oss-storage-class".into(), headers.storage_class));
+    }
+    for (name, value) in headers.metadata {
+        if !name.starts_with("x-oss-meta-")
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        {
+            return Err("errors.invalidHeader".into());
+        }
+        extra_headers.push((name, value));
+    }
+    request_with_headers(
+        &credentials(&state)?,
+        Method::PUT,
+        &bucket,
+        &region,
+        &key,
+        &[],
+        None,
+        "",
+        false,
+        &extra_headers,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_object(
+    bucket: String,
+    region: String,
+    key: String,
+    days: u8,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if key.is_empty() || key.ends_with('/') || !(1..=7).contains(&days) {
+        return Err("errors.invalidRestore".into());
+    }
+    request(
+        &credentials(&state)?,
+        Method::POST,
+        &bucket,
+        &region,
+        &key,
+        &[("restore", String::new())],
+        Some(format!("<RestoreRequest><Days>{days}</Days></RestoreRequest>").into_bytes()),
+        "application/xml",
+        false,
+        &options.unwrap_or_default(),
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_symlink(
+    bucket: String,
+    region: String,
+    source_key: String,
+    symlink_key: String,
+    options: Option<RequestOptions>,
+    state: State<'_, OssState>,
+) -> Result<(), String> {
+    if source_key.is_empty()
+        || source_key.ends_with('/')
+        || symlink_key.is_empty()
+        || symlink_key.ends_with('/')
+        || source_key == symlink_key
+    {
+        return Err("errors.invalidSymlink".into());
+    }
+    validate_key(&source_key)?;
+    validate_key(&symlink_key)?;
+    request_with_headers(
+        &credentials(&state)?,
+        Method::PUT,
+        &bucket,
+        &region,
+        &symlink_key,
+        &[("symlink", String::new())],
+        None,
+        "",
+        true,
+        &[("x-oss-symlink-target".into(), encode(&source_key, true))],
         &options.unwrap_or_default(),
     )
     .await?;
@@ -642,6 +1191,7 @@ pub async fn delete_object(
         &[],
         None,
         "",
+        false,
         &options,
     )
     .await?;
@@ -685,6 +1235,7 @@ pub async fn download_object(
             &[],
             None,
             "",
+            false,
             &options.unwrap_or_default(),
         )
         .await?,
@@ -754,7 +1305,7 @@ pub async fn preview_image(
         biased;
         _ = changes.changed() => Err("errors.previewCancelled".into()),
         result = async {
-            let response = request(&c, Method::GET, &bucket, &region, &key, &[], None, "", &options).await?;
+            let response = request(&c, Method::GET, &bucket, &region, &key, &[], None, "", false, &options).await?;
             if response.content_length().is_some_and(|n| n > MAX_PREVIEW_SIZE as u64) {
                 return Err("errors.previewTooLarge".into());
             }
@@ -883,6 +1434,47 @@ mod tests {
         assert!(validate_region("cn-hangzhou.evil.com").is_err());
         assert!(validate_bucket("bad/name").is_err());
         assert!(validate_key("folder/../name").is_err());
+    }
+    #[test]
+    fn signed_urls_are_v4_scoped_encoded_and_time_limited() {
+        let credentials = Credentials {
+            name: String::new(),
+            access_key_id: "test-ak".into(),
+            access_key_secret: "test-secret".into(),
+            security_token: "token+/=".into(),
+            region: "cn-hangzhou".into(),
+            bucket: String::new(),
+        };
+        let url = signed_object_url_at(
+            &credentials,
+            "valid-bucket",
+            "oss-cn-hangzhou",
+            "品牌/a b+.png",
+            3600,
+            "20260906T010203Z",
+        )
+        .unwrap();
+        assert!(url.starts_with(
+            "https://valid-bucket.oss-cn-hangzhou.aliyuncs.com/%E5%93%81%E7%89%8C/a%20b%2B.png?"
+        ));
+        assert!(url.contains(
+            "x-oss-credential=test-ak%2F20260906%2Fcn-hangzhou%2Foss%2Faliyun_v4_request"
+        ));
+        assert!(url.contains("x-oss-date=20260906T010203Z"));
+        assert!(url.contains("x-oss-expires=3600"));
+        assert!(url.contains("x-oss-security-token=token%2B%2F%3D"));
+        let signature = url.split("x-oss-signature=").nth(1).unwrap();
+        assert_eq!(signature.len(), 64);
+        assert!(signature.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(signed_object_url_at(
+            &credentials,
+            "valid-bucket",
+            "cn-hangzhou",
+            "folder/",
+            3600,
+            "20260906T010203Z"
+        )
+        .is_err());
     }
     #[test]
     fn parse_realistic_list_response() {
