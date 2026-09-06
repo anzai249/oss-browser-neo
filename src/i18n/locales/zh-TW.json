@@ -320,6 +320,12 @@
     "invalidSymlink": "請輸入其他有效的軟連結路徑。"
   },
   "preferences": {
+    "appearance": "外觀",
+    "theme": "色彩主題",
+    "themeHint": "自動跟隨系統外觀，或固定使用亮色或暗色主題。",
+    "themeSystem": "跟隨系統",
+    "themeLight": "亮色",
+    "themeDark": "暗色",
     "browsing": "瀏覽與預覽",
     "imagePreview": "預覽選取的圖片",
     "imagePreviewHint": "在右側詳細資訊讀取選取的圖片，會產生 OSS 流量。支援最大 10 MB 的圖片。",

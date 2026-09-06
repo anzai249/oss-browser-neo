@@ -11,8 +11,8 @@
     'Segoe UI',
     'Noto Sans TC',
     sans-serif;
-  color: #303837;
-  background: #f7f8fa;
+  color: rgb(var(--v-theme-on-background));
+  background: rgb(var(--v-theme-background));
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
 }
@@ -1915,6 +1915,287 @@ tr:focus-within .star-button,
     max-height: 180px;
     border-right: 0;
     border-bottom: 1px solid #e4e7ed;
+  }
+}
+
+/* Application colors follow Vuetify's active light/dark theme. */
+.v-application {
+  color: rgb(var(--v-theme-on-background)) !important;
+  background: rgb(var(--v-theme-background));
+}
+
+.main-shell,
+.connection-screen,
+.connection-list {
+  background: rgb(var(--v-theme-background));
+}
+
+.sidebar,
+.files-panel,
+.secondary-panel,
+.settings-card,
+.connection-onboarding .connection-form,
+.connection-card .connection-form,
+.connection-manager.has-profiles,
+.transfer-summary > div {
+  background: rgb(var(--v-theme-surface));
+}
+
+.topbar {
+  background: rgba(var(--v-theme-surface), 0.92);
+}
+
+.details-panel {
+  background: rgb(var(--v-theme-surface));
+}
+
+.bucket-overview {
+  background: rgb(var(--v-theme-surface));
+}
+
+.workspace-avatar,
+.avatar,
+.bucket-symbol,
+.storage-pill,
+.file-preview,
+.empty-icon,
+.transfer-direction,
+.settings-icon,
+.object-path,
+.delete-file-list {
+  background: rgb(var(--v-theme-surface-variant));
+}
+
+.sidebar,
+.topbar,
+.bucket-overview,
+.files-panel,
+.file-toolbar,
+.file-content,
+.details-panel,
+.file-preview,
+.file-grid-card,
+.secondary-panel,
+.transfer-summary > div,
+.transfer-row,
+.settings-card,
+.connection-onboarding .connection-form,
+.connection-card .connection-form,
+.connection-manager.has-profiles,
+.connection-list,
+.preference-row + .preference-row {
+  border-color: rgba(var(--v-theme-outline), 0.24);
+}
+
+.workspace-avatar,
+.bucket-symbol,
+.transfer-counter,
+.details-panel .v-btn {
+  border-color: rgba(var(--v-theme-outline), 0.28);
+}
+
+.topbar-divider,
+.controls-divider {
+  background: rgba(var(--v-theme-outline), 0.24);
+}
+
+.sidebar-footer,
+.bucket-metric {
+  border-color: rgba(var(--v-theme-outline), 0.2);
+}
+
+.brand small,
+.nav-label,
+.sidebar-footer,
+.tiny-brand,
+.workspace-switch small,
+.topbar-title,
+.topbar-title > svg,
+.connection-status,
+.eyebrow,
+.page-heading p,
+.bucket-identity div > span,
+.overview-separator,
+.bucket-metric > span,
+.bucket-metric small,
+.search-field kbd,
+.file-list-footer,
+.preview-type,
+.details-file-title div > span,
+.file-metadata dt,
+.detail-placeholder,
+.workspace-footer,
+.selection-bar small,
+.grid-file-open small,
+.empty-state,
+.transfer-summary,
+.transfer-summary span,
+.transfer-row p,
+.preferences-footer,
+.connection-form-heading p,
+.remember-connection p,
+.preview-message,
+.connection-list-heading,
+.settings-card p,
+.class-badge {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+.workspace-switch strong,
+.topbar-title > span,
+h1,
+.bucket-metric strong,
+.details-heading,
+.details-file-title h3,
+.detail-section-label,
+.file-metadata dd,
+.empty-state h3,
+.transfer-summary strong,
+.settings-card h2,
+.app-dialog .v-card-title,
+.app-dialog .v-card-text,
+.help-content h3 {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.file-controls .v-btn,
+.details-panel .v-btn,
+.workspace-footer button,
+.object-path,
+.bucket-symbol,
+.workspace-avatar,
+.avatar,
+.storage-pill,
+.settings-icon,
+.detail-section-label {
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+.avatar {
+  border-color: rgb(var(--v-theme-surface));
+  outline-color: rgba(var(--v-theme-outline), 0.28);
+}
+
+.app-dialog .v-field__outline {
+  color: rgb(var(--v-theme-outline));
+}
+
+.files-table th,
+.files-table td {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+.files-table tbody tr.focused-row {
+  background: rgba(var(--v-theme-primary), 0.07);
+}
+
+.files-table tbody tr.checked-row,
+.selection-bar,
+.file-grid-card.selected,
+.dialog-brand {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+
+.file-grid-card.selected {
+  border-color: rgba(var(--v-theme-primary), 0.52);
+}
+
+.heading-dot,
+.text-link,
+.drop-overlay {
+  color: rgb(var(--v-theme-primary));
+}
+
+.brand-mark {
+  box-shadow: 0 3px 8px rgba(var(--v-theme-primary), 0.16);
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible {
+  outline-color: rgb(var(--v-theme-primary));
+}
+
+.drop-overlay {
+  background: rgba(var(--v-theme-surface), 0.94);
+  border-color: rgb(var(--v-theme-primary));
+}
+
+.saved-connection {
+  background: rgba(var(--v-theme-info), 0.12);
+  color: rgb(var(--v-theme-info));
+}
+
+.connection-notice,
+.task-status.done {
+  color: rgb(var(--v-theme-success));
+}
+
+.transfer-row .transfer-error,
+.task-status.error {
+  color: rgb(var(--v-theme-error));
+}
+
+.file-icon.folder,
+.starred,
+.task-status,
+.task-status.paused,
+.task-status.waiting {
+  color: rgb(var(--v-theme-warning)) !important;
+}
+
+.file-icon.pdf {
+  color: rgb(var(--v-theme-error));
+}
+
+.file-icon.svg,
+.file-icon.png,
+.file-icon.jpg,
+.file-icon.jpeg,
+.file-icon.webp {
+  color: rgb(var(--v-theme-info));
+}
+
+.file-icon,
+.file-icon.json,
+.file-icon.html,
+.file-icon.md,
+.file-icon.txt {
+  color: rgb(var(--v-theme-secondary));
+}
+
+.files-panel,
+.connection-onboarding .connection-form,
+.connection-card .connection-form {
+  box-shadow: 0 4px 24px rgba(var(--v-theme-on-background), 0.06);
+}
+
+.sidebar-backdrop,
+.details-backdrop {
+  background: rgba(var(--v-theme-on-background), 0.28) !important;
+}
+
+.details-panel {
+  box-shadow: 0 15px 55px rgba(var(--v-theme-on-background), 0.14);
+}
+
+.theme-toggle {
+  flex: 0 0 auto;
+}
+
+.theme-toggle .v-btn {
+  min-width: 36px;
+}
+
+.theme-toggle .v-btn__content {
+  gap: 5px;
+}
+
+@media (max-width: 520px) {
+  .theme-preference-row {
+    align-items: flex-end;
+    flex-direction: column;
   }
 }
 

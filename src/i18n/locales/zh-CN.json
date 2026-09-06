@@ -320,6 +320,12 @@
     "invalidSymlink": "请输入其他有效的软链接路径。"
   },
   "preferences": {
+    "appearance": "外观",
+    "theme": "颜色主题",
+    "themeHint": "自动跟随系统外观，或固定使用亮色或暗色主题。",
+    "themeSystem": "跟随系统",
+    "themeLight": "亮色",
+    "themeDark": "暗色",
     "browsing": "浏览与预览",
     "imagePreview": "预览选中的图片",
     "imagePreviewHint": "在右侧详情中读取选中的图片，会产生 OSS 流量。支持最大 10 MB 的图片。",

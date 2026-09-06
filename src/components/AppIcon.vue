@@ -42,6 +42,7 @@ import {
   mdiMagnify,
   mdiMenu,
   mdiMonitorDashboard,
+  mdiMonitor,
   mdiPlus,
   mdiPause,
   mdiPlay,
@@ -62,6 +63,9 @@ import {
   mdiTrashCanOutline,
   mdiUpload,
   mdiViewGridOutline,
+  mdiThemeLightDark,
+  mdiWhiteBalanceSunny,
+  mdiWeatherNight,
 } from '@mdi/js'
 const icons = {
   mdiTranslate,
@@ -106,6 +110,7 @@ const icons = {
   mdiMagnify,
   mdiMenu,
   mdiMonitorDashboard,
+  mdiMonitor,
   mdiPlus,
   mdiPause,
   mdiPlay,
@@ -126,6 +131,9 @@ const icons = {
   mdiTrashCanOutline,
   mdiUpload,
   mdiViewGridOutline,
+  mdiThemeLightDark,
+  mdiWhiteBalanceSunny,
+  mdiWeatherNight,
 }
 const props = defineProps({
   name: { type: String, default: 'file-outline' },

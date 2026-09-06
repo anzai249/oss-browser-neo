@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   preferences,
@@ -8,9 +9,47 @@ import {
 } from '../composables/usePreferences.js'
 import Icon from './AppIcon.vue'
 const { t } = useI18n()
+const themeOptions = computed(() => [
+  { title: t('preferences.themeSystem'), value: 'system', icon: 'monitor' },
+  { title: t('preferences.themeLight'), value: 'light', icon: 'white-balance-sunny' },
+  { title: t('preferences.themeDark'), value: 'dark', icon: 'weather-night' },
+])
 </script>
 <template>
   <div class="preferences-panel">
+    <v-card tag="section" variant="outlined" class="settings-card">
+      <span class="settings-icon"><Icon name="theme-light-dark" :size="24" /></span>
+      <div class="preference-body">
+        <h2>{{ t('preferences.appearance') }}</h2>
+        <div class="preference-row theme-preference-row">
+          <div>
+            <strong>{{ t('preferences.theme') }}</strong>
+            <p>{{ t('preferences.themeHint') }}</p>
+          </div>
+          <v-btn-toggle
+            v-model="preferences.theme"
+            color="primary"
+            density="compact"
+            variant="outlined"
+            mandatory
+            divided
+            :aria-label="t('preferences.theme')"
+            class="theme-toggle"
+          >
+            <v-btn
+              v-for="option in themeOptions"
+              :key="option.value"
+              :value="option.value"
+              :aria-label="option.title"
+              :title="option.title"
+            >
+              <Icon :name="option.icon" :size="16" />
+              <span>{{ option.title }}</span>
+            </v-btn>
+          </v-btn-toggle>
+        </div>
+      </div>
+    </v-card>
     <v-card tag="section" variant="outlined" class="settings-card">
       <span class="settings-icon"><Icon name="image-outline" :size="24" /></span>
       <div class="preference-body">

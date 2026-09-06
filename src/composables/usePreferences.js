@@ -2,12 +2,14 @@ import { reactive, ref, watch } from 'vue'
 
 export const PREFERENCES_KEY = 'oss-neo-preferences'
 export const preferenceOptions = {
+  theme: ['system', 'light', 'dark'],
   pageSize: [100, 200, 500, 1000],
   timeoutSeconds: [30, 60, 120, 300, 600],
   readRetries: [0, 1, 2, 3],
   historyLimit: [50, 100, 200, 500],
 }
 export const preferenceDefaults = Object.freeze({
+  theme: 'system',
   imagePreview: true,
   pageSize: 100,
   timeoutSeconds: 300,

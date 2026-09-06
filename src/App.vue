@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
+import { useTheme } from 'vuetify'
 import Icon from './components/AppIcon.vue'
 import { useFileDrop } from './composables/useFileDrop.js'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
@@ -8,7 +9,14 @@ import PreferencesPanel from './components/PreferencesPanel.vue'
 import ImagePreview from './components/ImagePreview.vue'
 import { useI18n } from 'vue-i18n'
 import { formatDate, formatNumber, itemCount, messageText, syncSystemLocale } from './i18n/index.js'
+import { preferences } from './composables/usePreferences.js'
 const { t } = useI18n()
+const theme = useTheme()
+watch(
+  () => preferences.theme,
+  (value) => theme.change(value),
+  { immediate: true },
+)
 import { useWorkspace, formatSize, fileName, fileKind, fileIcon } from './composables/useWorkspace'
 const {
   mode,
@@ -701,7 +709,7 @@ onUnmounted(() => {
                   icon
                   :aria-pressed="detailsOpen"
                   class="icon-button details-toggle"
-                  :class="{ 'text-orange-600': detailsOpen }"
+                  :class="{ 'text-primary': detailsOpen }"
                   :aria-label="t('files.toggleDetails')"
                   @click="detailsOpen = !detailsOpen"
                 >
@@ -866,7 +874,7 @@ onUnmounted(() => {
                                 ? t('files.standard')
                                 : item.storageClass
                           }}</v-chip
-                          ><span v-else class="text-gray-300">—</span>
+                          ><span v-else class="text-disabled">—</span>
                         </td>
                         <td class="row-actions">
                           <v-btn
@@ -1657,7 +1665,7 @@ onUnmounted(() => {
       :model-value="!!toast"
       @update:model-value="toast = ''"
       :timeout="4500"
-      color="#293b34"
+      color="secondary"
       >{{ messageText(toast)
       }}<template #actions
         ><v-btn variant="text" @click="toast = ''">{{ t('actions.close') }}</v-btn></template

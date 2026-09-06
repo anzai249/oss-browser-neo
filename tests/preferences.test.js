@@ -15,11 +15,13 @@ test('preferences persist, restore and reset without touching language or creden
   }
   const first = createPreferences(storage)
   first.preferences.imagePreview = false
+  first.preferences.theme = 'dark'
   first.preferences.pageSize = 500
   first.preferences.timeoutSeconds = 60
   first.preferences.readRetries = 3
   const second = createPreferences(storage)
   assert.equal(second.preferences.imagePreview, false)
+  assert.equal(second.preferences.theme, 'dark')
   assert.equal(second.preferences.pageSize, 500)
   assert.equal(second.preferences.timeoutSeconds, 60)
   assert.equal(second.preferences.readRetries, 3)
@@ -33,6 +35,7 @@ test('malformed storage and out-of-range settings use safe defaults', () => {
   assert.deepEqual(
     sanitizePreferences({
       imagePreview: 'false',
+      theme: 'sepia',
       pageSize: 100000,
       timeoutSeconds: -1,
       readRetries: 100,

@@ -320,6 +320,12 @@
     "invalidSymlink": "Enter a different valid symbolic link path."
   },
   "preferences": {
+    "appearance": "Appearance",
+    "theme": "Color theme",
+    "themeHint": "Follow your system appearance automatically, or keep a light or dark theme.",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
     "browsing": "Browsing & preview",
     "imagePreview": "Preview selected images",
     "imagePreviewHint": "Load the selected image in Details. Uses OSS traffic; supports images up to 10 MB.",
