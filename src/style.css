@@ -2150,7 +2150,6 @@ select:focus-visible {
   color: rgb(var(--v-theme-error));
 }
 
-.file-icon.folder,
 .starred,
 .task-status,
 .task-status.paused,
@@ -2158,8 +2157,12 @@ select:focus-visible {
   color: rgb(var(--v-theme-warning)) !important;
 }
 
+.file-icon.folder {
+  color: rgb(var(--v-theme-file-folder));
+}
+
 .file-icon.pdf {
-  color: rgb(var(--v-theme-error));
+  color: rgb(var(--v-theme-file-pdf));
 }
 
 .file-icon.svg,
@@ -2167,15 +2170,25 @@ select:focus-visible {
 .file-icon.jpg,
 .file-icon.jpeg,
 .file-icon.webp {
-  color: rgb(var(--v-theme-info));
+  color: rgb(var(--v-theme-file-image));
 }
 
-.file-icon,
 .file-icon.json,
-.file-icon.html,
+.file-icon.html {
+  color: rgb(var(--v-theme-file-code));
+}
+
 .file-icon.md,
 .file-icon.txt {
-  color: rgb(var(--v-theme-secondary));
+  color: rgb(var(--v-theme-file-text));
+}
+
+.file-icon.zip {
+  color: rgb(var(--v-theme-file-archive));
+}
+
+.file-icon {
+  color: rgb(var(--v-theme-file-default));
 }
 
 .files-panel,
