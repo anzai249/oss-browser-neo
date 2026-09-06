@@ -36,7 +36,7 @@
     "disconnect": "中斷連線",
     "loading": "正在讀取已儲存的連線",
     "remember": "在此裝置記住連線",
-    "rememberHint": "儲存所選連線的變更，或新增連線。每組連線的憑證獨立儲存在系統憑證庫。",
+    "rememberHint": "儲存所選連線的變更，或新增連線。憑證儲存在僅目前系統帳號可存取的受保護儲存空間。",
     "sessionHint": "僅本次連線，不變更已儲存的連線。",
     "saved": "使用已儲存的憑證",
     "savedAvailable": "有可用的已儲存連線",
@@ -50,6 +50,7 @@
     "allBuckets": "所有可存取的 Bucket",
     "saveOnly": "儲存",
     "savedNotice": "已儲存連線，變更於重新連線後生效。",
+    "missingRemoved": "已移除受保護憑證無法使用的舊連線。重新輸入一次並儲存後即可正常持久化。",
     "deleteTitle": "刪除此連線？",
     "deleteDescription": "從此裝置刪除「{name}」及其儲存的憑證？目前的工作階段會維持連線。",
     "cleanupPending": "部分舊憑證尚未清除，請解鎖系統憑證庫後重試完成清理。"

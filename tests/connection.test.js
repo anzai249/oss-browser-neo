@@ -194,3 +194,18 @@ test('locked storage still allows a session-only connection', async () => {
   assert.equal(f.remember.value, false)
   assert.equal(f.locked.value, false)
 })
+test('stale credential references are reported after valid profiles remain usable', async () => {
+  const f = setup({
+    api: {
+      savedConnections: async () => ({
+        profiles: [profile],
+        cleanupPending: false,
+        missingRemoved: true,
+      }),
+    },
+  })
+  await f.loadSaved()
+  assert.equal(f.saved.value.id, profile.id)
+  assert.equal(f.notice.value, 'connection.missingRemoved')
+  assert.equal(f.loadError.value, '')
+})

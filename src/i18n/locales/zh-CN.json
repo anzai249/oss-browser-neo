@@ -36,7 +36,7 @@
     "disconnect": "断开连接",
     "loading": "正在读取已保存的连接",
     "remember": "在此设备记住连接",
-    "rememberHint": "保存所选连接的更改，或新增连接。每组连接的凭证独立保存在系统凭证库。",
+    "rememberHint": "保存所选连接的更改，或新增连接。凭证保存在仅当前系统账户可访问的受保护存储中。",
     "sessionHint": "仅本次连接，不更改已保存的连接。",
     "saved": "使用已保存的凭证",
     "savedAvailable": "有可用的已保存连接",
@@ -50,6 +50,7 @@
     "allBuckets": "所有可访问的 Bucket",
     "saveOnly": "保存",
     "savedNotice": "已保存连接，更改将在重新连接后生效。",
+    "missingRemoved": "已移除受保护凭证不可用的旧连接。重新输入一次并保存后即可正常持久化。",
     "deleteTitle": "删除此连接？",
     "deleteDescription": "从此设备删除「{name}」及其保存的凭证？当前会话将保持连接。",
     "cleanupPending": "部分旧凭证尚未清除，请解锁系统凭证库后重试完成清理。"

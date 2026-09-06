@@ -34,6 +34,7 @@ pub struct SavedConnection {
 pub struct CatalogView {
     profiles: Vec<SavedConnection>,
     cleanup_pending: bool,
+    missing_removed: bool,
 }
 fn public_profile(id: String, c: Credentials) -> SavedConnection {
     SavedConnection {
@@ -52,6 +53,42 @@ trait Store {
 struct SystemStore {
     path: PathBuf,
 }
+impl SystemStore {
+    fn credential_path(&self, key: &str) -> Result<PathBuf, String> {
+        if !valid_key(key) {
+            return Err("errors.persistenceCorrupt".into());
+        }
+        Ok(self
+            .path
+            .parent()
+            .ok_or_else(|| "errors.persistenceUnavailable".to_string())?
+            .join("credentials-v2")
+            .join(format!("{key}.json")))
+    }
+}
+
+fn atomic_write(path: &std::path::Path, value: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "errors.persistenceUnavailable".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|_| "errors.persistenceWrite".to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| "errors.persistenceWrite".to_string())?;
+    }
+    let mut file = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|_| "errors.persistenceWrite".to_string())?;
+    file.write_all(value.as_bytes())
+        .map_err(|_| "errors.persistenceWrite".to_string())?;
+    file.as_file()
+        .sync_all()
+        .map_err(|_| "errors.persistenceWrite".to_string())?;
+    file.persist(path)
+        .map_err(|_| "errors.persistenceWrite".to_string())?;
+    Ok(())
+}
 fn keyring_entry(key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, key).map_err(|_| "errors.persistenceUnavailable".into())
 }
@@ -64,34 +101,47 @@ impl Store for SystemStore {
                 Err(_) => Err("errors.persistenceRead".into()),
             };
         }
-        match keyring_entry(key)?.get_password() {
+        let keyring_result = match keyring_entry(key)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err("errors.persistenceRead".into()),
+        };
+        if keyring_result.as_ref().is_ok_and(Option::is_some) {
+            return keyring_result;
+        }
+        match std::fs::read_to_string(self.credential_path(key)?) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => keyring_result,
             Err(_) => Err("errors.persistenceRead".into()),
         }
     }
     fn write(&self, key: &str, value: &str) -> Result<(), String> {
         if key == INDEX {
-            let write = || -> std::io::Result<()> {
-                let parent = self.path.parent().ok_or(std::io::ErrorKind::InvalidInput)?;
-                std::fs::create_dir_all(parent)?;
-                let mut file = tempfile::NamedTempFile::new_in(parent)?;
-                file.write_all(value.as_bytes())?;
-                file.as_file().sync_all()?;
-                file.persist(&self.path).map_err(|e| e.error)?;
-                Ok(())
-            };
-            return write().map_err(|_| "errors.persistenceWrite".into());
+            return atomic_write(&self.path, value);
         }
-        keyring_entry(key)?
-            .set_password(value)
-            .map_err(|_| "errors.persistenceWrite".into())
+        atomic_write(&self.credential_path(key)?, value)?;
+        // Local unsigned development builds can lose access to Keychain items
+        // after their binary is replaced. The owner-only file is the durable
+        // source; Keychain remains a best-effort system copy.
+        let _ = keyring_entry(key).and_then(|entry| {
+            entry
+                .set_password(value)
+                .map_err(|_| "errors.persistenceWrite".into())
+        });
+        Ok(())
     }
     fn remove(&self, key: &str) -> Result<(), String> {
-        match keyring_entry(key)?.delete_credential() {
+        let path = self.credential_path(key)?;
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("errors.persistenceRemove".into()),
+        }
+        let _ = keyring_entry(key).and_then(|entry| match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(_) => Err("errors.persistenceRemove".into()),
-        }
+        });
+        Ok(())
     }
 }
 fn valid_key(key: &str) -> bool {
@@ -169,19 +219,29 @@ fn catalog(store: &impl Store) -> Result<Catalog, String> {
     cleanup(store, &mut result);
     Ok(result)
 }
-fn view(store: &impl Store, catalog: &Catalog) -> Result<CatalogView, String> {
-    Ok(CatalogView {
-        profiles: catalog
+fn view(store: &impl Store, catalog: &mut Catalog) -> Result<CatalogView, String> {
+    let mut profiles = Vec::new();
+    let mut missing = std::collections::HashSet::new();
+    for entry in &catalog.entries {
+        match read_credentials(store, &entry.key) {
+            Ok(credentials) => profiles.push(public_profile(entry.id.clone(), credentials)),
+            Err(error) if error == "errors.savedConnectionMissing" => {
+                missing.insert(entry.key.clone());
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    let missing_removed = !missing.is_empty();
+    if missing_removed {
+        catalog
             .entries
-            .iter()
-            .map(|entry| {
-                Ok(public_profile(
-                    entry.id.clone(),
-                    read_credentials(store, &entry.key)?,
-                ))
-            })
-            .collect::<Result<_, String>>()?,
+            .retain(|entry| !missing.contains(&entry.key));
+        write_catalog(store, catalog)?;
+    }
+    Ok(CatalogView {
+        profiles,
         cleanup_pending: !catalog.pending_delete.is_empty(),
+        missing_removed,
     })
 }
 fn load_from(store: &impl Store, id: &str) -> Result<Credentials, String> {
@@ -244,7 +304,7 @@ fn remove_from(store: &impl Store, id: &str) -> Result<CatalogView, String> {
         write_catalog(store, &catalog)?;
     }
     cleanup(store, &mut catalog);
-    view(store, &catalog)
+    view(store, &mut catalog)
 }
 async fn with_store<T: Send + 'static>(
     app: tauri::AppHandle,
@@ -297,7 +357,11 @@ pub async fn save(
 }
 #[tauri::command]
 pub async fn saved_connections(app: tauri::AppHandle) -> Result<CatalogView, String> {
-    with_store(app, |store| view(store, &catalog(store)?)).await
+    with_store(app, |store| {
+        let mut catalog = catalog(store)?;
+        view(store, &mut catalog)
+    })
+    .await
 }
 #[tauri::command]
 pub async fn save_connection(
@@ -381,7 +445,8 @@ mod tests {
             load_from(&store, &second.id).unwrap().access_key_secret,
             "secret-two"
         );
-        let snapshot = view(&store, &catalog(&store).unwrap()).unwrap();
+        let mut saved_catalog = catalog(&store).unwrap();
+        let snapshot = view(&store, &mut saved_catalog).unwrap();
         assert_eq!(snapshot.profiles.len(), 2);
         let json = serde_json::to_string(&snapshot).unwrap();
         assert!(!json.contains("secret-"));
@@ -397,6 +462,30 @@ mod tests {
             "secret-two"
         );
         assert_eq!(store.data.borrow().len(), 2, "one credential plus index");
+    }
+    #[test]
+    fn missing_credentials_are_pruned_without_hiding_valid_profiles() {
+        let store = MemoryStore::default();
+        let missing = save_to(&store, None, fixture("missing")).unwrap();
+        let valid = save_to(&store, None, fixture("valid")).unwrap();
+        let missing_key = catalog(&store)
+            .unwrap()
+            .entries
+            .into_iter()
+            .find(|entry| entry.id == missing.id)
+            .unwrap()
+            .key;
+        store.data.borrow_mut().remove(&missing_key);
+        let mut saved_catalog = catalog(&store).unwrap();
+        let snapshot = view(&store, &mut saved_catalog).unwrap();
+        assert!(snapshot.missing_removed);
+        assert_eq!(snapshot.profiles.len(), 1);
+        assert_eq!(snapshot.profiles[0].id, valid.id);
+        assert_eq!(catalog(&store).unwrap().entries.len(), 1);
+        assert_eq!(
+            load_from(&store, &valid.id).unwrap().access_key_secret,
+            "secret-valid"
+        );
     }
     #[test]
     fn legacy_connection_migrates_once_and_cannot_resurrect_after_deletion() {
@@ -497,5 +586,36 @@ mod tests {
         store.write(INDEX, "first").unwrap();
         store.write(INDEX, "second").unwrap();
         assert_eq!(store.read(INDEX).unwrap().unwrap(), "second");
+    }
+    #[test]
+    fn owner_only_fallback_survives_a_fresh_store_instance() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app-data/connections-v2.json");
+        let key = "connection-v2-00000000-0000-4000-8000-000000000000";
+        let first = SystemStore { path: path.clone() };
+        let credential_path = first.credential_path(key).unwrap();
+        atomic_write(&credential_path, "durable-secret").unwrap();
+        let reopened = SystemStore { path };
+        assert_eq!(reopened.read(key).unwrap().unwrap(), "durable-secret");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&credential_path)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+            assert_eq!(
+                std::fs::metadata(credential_path.parent().unwrap())
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
     }
 }

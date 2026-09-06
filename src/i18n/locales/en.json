@@ -36,7 +36,7 @@
     "disconnect": "Disconnect",
     "loading": "Loading saved connection",
     "remember": "Remember this connection on this device",
-    "rememberHint": "Save changes to the selected connection, or add a new connection. Each connection uses the system credential store.",
+    "rememberHint": "Save changes to the selected connection, or add a new connection. Credentials use protected storage owned by your system account.",
     "sessionHint": "Connect for this session only without changing your saved connections.",
     "saved": "Using saved credentials",
     "savedAvailable": "A saved connection is available",
@@ -50,6 +50,7 @@
     "allBuckets": "All accessible buckets",
     "saveOnly": "Save",
     "savedNotice": "Connection saved. Changes apply when you connect again.",
+    "missingRemoved": "Removed saved connections whose protected credentials were no longer available. Enter them once more to save them again.",
     "deleteTitle": "Delete this connection?",
     "deleteDescription": "Remove “{name}” and its saved credentials from this device? The active session will stay connected.",
     "cleanupPending": "Some old credentials could not be removed. Unlock the system credential store and retry to finish cleanup."

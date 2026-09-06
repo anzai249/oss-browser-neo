@@ -29,7 +29,8 @@ export function useConnectionForm({
   const loadError = ref(''),
     formError = ref(''),
     notice = ref(''),
-    cleanupPending = ref(false)
+    cleanupPending = ref(false),
+    missingRemoved = ref(false)
   const deleteTarget = ref(null)
   const locked = computed(
     () => busy() || checking.value || clearing.value || saving.value || submitting.value,
@@ -57,6 +58,7 @@ export function useConnectionForm({
   function applyCatalog(result) {
     profiles.value = result.profiles
     cleanupPending.value = result.cleanupPending
+    missingRemoved.value = !!result.missingRemoved
   }
   async function loadSaved(preferredId = activeId()) {
     if (!isDesktop) return
@@ -67,6 +69,7 @@ export function useConnectionForm({
       restore(
         profiles.value.find((profile) => profile.id === preferredId) || profiles.value[0] || null,
       )
+      if (missingRemoved.value) notice.value = 'connection.missingRemoved'
     } catch (e) {
       loadError.value = String(e)
       remember.value = false
