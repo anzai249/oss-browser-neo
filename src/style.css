@@ -747,6 +747,11 @@ tr:focus-within .star-button,
 .file-grid-card {
   border: 1px solid #e9ede7;
   padding: 6px 9px 10px;
+  min-width: 0;
+  min-height: 142px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .file-grid-card.selected {
   border-color: #edbc93;
@@ -754,10 +759,12 @@ tr:focus-within .star-button,
 }
 .grid-file-open {
   width: 100%;
-  height: auto !important;
-  padding: 8px;
+  min-height: 96px;
+  height: 96px !important;
+  padding: 6px 8px;
+  flex: 1 0 96px;
   white-space: normal;
-  text-align: left;
+  text-align: center;
 }
 .grid-file-open .file-icon {
   width: 100%;
@@ -768,6 +775,12 @@ tr:focus-within .star-button,
   font-weight: 500;
   overflow-wrap: anywhere;
   max-width: 100%;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 .grid-file-open small {
   font-size: 9px;
@@ -2266,10 +2279,12 @@ select:focus-visible {
 }
 .grid-file-open .v-btn__content {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  overflow: hidden;
 }
 .workspace-footer .v-btn__content {
   gap: 6px;

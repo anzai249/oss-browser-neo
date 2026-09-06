@@ -940,11 +940,12 @@ onUnmounted(() => {
                       <v-btn
                         variant="text"
                         size="small"
+                        stacked
                         class="grid-file-open"
                         @click="openItem(item)"
                       >
                         <span class="file-icon" :class="fileKind(item)"
-                          ><Icon :name="fileIcon(item)" :size="42" /></span
+                          ><Icon :name="fileIcon(item)" :size="34" /></span
                         ><strong>{{ fileName(item) }}</strong
                         ><small>{{
                           item.isFolder ? t('files.folder') : formatSize(item.size)
