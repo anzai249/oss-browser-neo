@@ -29,7 +29,7 @@ src-tauri/target/release/bundle/dmg/
 
 ## AI Usage
 
-This project is an AI slogan. I could not have produced it without Codex.
+This project is an AI slop. I could not have produced it without Codex.
 
 ## Disclaimer
 
