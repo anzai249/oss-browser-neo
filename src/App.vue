@@ -1155,7 +1155,7 @@ onUnmounted(() => {
                 </p>
                 <p v-if="task.direction === 'upload'" class="transfer-metrics">
                   {{ formatTransferSize(task.loaded) }} / {{ formatTransferSize(task.size) }}
-                  <span v-if="task.status === 'active' && task.speed">
+                  <span v-if="task.status === 'active'">
                     · {{ formatTransferSize(task.speed) }}/s</span
                   >
                   <span v-if="Number.isFinite(task.progress)"> · {{ task.progress }}%</span>

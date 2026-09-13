@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
 import { preferences } from '../composables/usePreferences.js'
 const options = () => ({
   timeoutSeconds: preferences.timeoutSeconds,
@@ -39,8 +39,9 @@ export const oss = {
       key,
       contentType: contentType || 'application/octet-stream',
     }),
-  uploadPart: async (bucket, region, key, uploadId, partNumber, blob) =>
-    invoke('upload_part', {
+  uploadPart: async (bucket, region, key, uploadId, partNumber, blob, onProgress) => {
+    const progress = new Channel((loaded) => onProgress?.(loaded))
+    return invoke('upload_part', {
       options: options(),
       bucket,
       region,
@@ -48,7 +49,9 @@ export const oss = {
       uploadId,
       partNumber,
       data: Array.from(new Uint8Array(await blob.arrayBuffer())),
-    }),
+      onProgress: progress,
+    })
+  },
   completeUpload: (bucket, region, key, uploadId, parts) =>
     invoke('complete_multipart_upload', {
       options: options(),

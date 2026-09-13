@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { nextTick } from 'vue'
+import { nextTick, watchEffect } from 'vue'
 import { preferences } from '../src/composables/usePreferences.js'
 import { useWorkspace } from '../src/composables/useWorkspace.js'
 
@@ -183,7 +183,7 @@ test('multipart upload reports progress and speed, pauses between parts, then re
   assert.equal(task.status, 'paused')
   assert.equal(uploadedParts.length, 1)
   assert.equal(task.progress, 50)
-  assert.ok(task.speed > 0)
+  assert.equal(task.speed, 0)
   w.resumeUpload(task.id)
   await pending
   assert.equal(task.status, 'done')
@@ -197,6 +197,117 @@ test('multipart upload reports progress and speed, pauses between parts, then re
     completedParts.map((part) => part.partNumber),
     [1, 2, 3],
   )
+})
+
+test('multipart upload samples streamed byte progress every second and resets stalled speed', async () => {
+  let reportProgress
+  let releasePart
+  let tick
+  let cleared
+  let frames = 0
+  let now = 0
+  const timing = {
+    now: () => now,
+    setInterval: (callback, delay) => {
+      assert.equal(delay, 1000)
+      tick = callback
+      return 'upload-ticker'
+    },
+    clearInterval: (id) => {
+      cleared = id
+    },
+    nextFrame: async () => {
+      frames++
+    },
+  }
+  const w = useWorkspace(
+    api({
+      startUpload: async () => 'upload-progress',
+      uploadPart: async (_bucket, _region, _key, _uploadId, _partNumber, _blob, onProgress) => {
+        reportProgress = onProgress
+        await new Promise((resolve) => {
+          releasePart = resolve
+        })
+        return '"etag"'
+      },
+      completeUpload: async () => {},
+      abortUpload: () => assert.fail('a successful upload must not be aborted'),
+    }),
+    timing,
+  )
+  await w.connect({})
+  const size = 1024 * 1024
+  const pending = w.upload([new File([new Uint8Array(size)], 'sample.bin')])
+  while (!reportProgress) await Promise.resolve()
+  const task = w.transfers.value[0]
+
+  reportProgress(String(size / 4))
+  assert.equal(task.loaded, size / 4)
+  assert.equal(task.progress, 25)
+  now = 1000
+  tick()
+  assert.equal(task.loaded, size / 4)
+  assert.equal(task.progress, 25)
+  assert.equal(task.speed, size / 4)
+
+  now = 2000
+  tick()
+  assert.equal(task.speed, 0)
+
+  reportProgress((size * 3) / 4)
+  now = 3000
+  tick()
+  assert.equal(task.loaded, (size * 3) / 4)
+  assert.equal(task.progress, 75)
+  assert.equal(task.speed, size / 2)
+
+  reportProgress(size)
+  assert.equal(task.loaded, size)
+  assert.equal(task.progress, 99.9)
+
+  releasePart()
+  await pending
+  assert.equal(task.status, 'done')
+  assert.equal(frames, 1)
+  assert.equal(cleared, 'upload-ticker')
+})
+
+test('streamed upload progress invalidates Vue consumers immediately', async () => {
+  let reportProgress
+  let releasePart
+  const renders = []
+  const w = useWorkspace(
+    api({
+      startUpload: async () => 'upload-reactivity',
+      uploadPart: async (_bucket, _region, _key, _uploadId, _partNumber, _blob, onProgress) => {
+        reportProgress = onProgress
+        await new Promise((resolve) => {
+          releasePart = resolve
+        })
+        return '"etag"'
+      },
+      completeUpload: async () => {},
+    }),
+  )
+  const stop = watchEffect(() => {
+    renders.push(w.transfers.value[0]?.progress ?? null)
+  })
+
+  await w.connect({})
+  const size = 1024 * 1024
+  const pending = w.upload([new File([new Uint8Array(size)], 'reactive.bin')])
+  while (!reportProgress) await Promise.resolve()
+  await nextTick()
+  const rendersBeforeProgress = renders.length
+
+  reportProgress(size / 4)
+  await nextTick()
+  assert.ok(renders.length > rendersBeforeProgress)
+  assert.equal(renders.at(-1), 25)
+
+  releasePart()
+  await pending
+  stop()
 })
 
 test('cancelling a multipart upload aborts it and completed uploads can be revealed', async () => {

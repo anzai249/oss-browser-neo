@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { i18n, formatNumber } from '../i18n/index.js'
 import { preferences } from './usePreferences.js'
 import { oss, desktop } from '../services/oss.js'
@@ -26,8 +26,35 @@ export const fileIcon = (item) =>
     html: 'language-html5',
     txt: 'text-box-outline',
   })[fileKind(item)] || 'file-outline'
-export function useWorkspace(api = oss) {
+const defaultTiming = {
+  now: () => performance.now(),
+  setInterval: (callback, delay) => setInterval(callback, delay),
+  clearInterval: (id) => clearInterval(id),
+  nextFrame: () =>
+    new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+      else setTimeout(resolve, 0)
+    }),
+}
+export function useWorkspace(api = oss, timing = defaultTiming) {
   const uploadRuntime = new Map()
+  const syncUploadProgress = (task, runtime) => {
+    const loaded = Math.min(task.size, Math.max(task.loaded, runtime.loaded))
+    task.loaded = loaded
+    const progress = task.size ? Math.round((loaded / task.size) * 1000) / 10 : 100
+    task.progress = task.status === 'active' ? Math.min(progress, 99.9) : progress
+  }
+  const sampleUploadSpeed = (task, runtime) => {
+    const now = timing.now()
+    syncUploadProgress(task, runtime)
+    const elapsed = Math.max(now - runtime.sampledAt, 1)
+    task.speed =
+      task.status === 'active'
+        ? Math.max(0, Math.round(((task.loaded - runtime.sampledBytes) * 1000) / elapsed))
+        : 0
+    runtime.sampledAt = now
+    runtime.sampledBytes = task.loaded
+  }
   const mode = ref('disconnected'),
     buckets = ref([]),
     bucket = ref(null),
@@ -230,7 +257,7 @@ export function useWorkspace(api = oss) {
       targetPrefix = prefix.value
     const queued = []
     for (const file of files) {
-      const task = {
+      const task = reactive({
         id: crypto.randomUUID(),
         name: file.name,
         size: file.size,
@@ -243,9 +270,16 @@ export function useWorkspace(api = oss) {
         region: targetRegion,
         key: targetPrefix + file.name,
         error: '',
-      }
+      })
       transfers.value.unshift(task)
-      uploadRuntime.set(task.id, { wake: null, uploadId: '' })
+      uploadRuntime.set(task.id, {
+        wake: null,
+        uploadId: '',
+        loaded: 0,
+        sampledAt: 0,
+        sampledBytes: 0,
+        ticker: null,
+      })
       queued.push({ task, file })
     }
     for (const { task, file } of queued) {
@@ -258,9 +292,9 @@ export function useWorkspace(api = oss) {
       try {
         if (file.size > 100 * 1024 * 1024) throw new Error('errors.fileLimit')
         task.status = 'active'
-        const started = performance.now()
-        let sampledAt = started
-        let sampledBytes = 0
+        const started = timing.now()
+        runtime.sampledAt = started
+        runtime.ticker = timing.setInterval(() => sampleUploadSpeed(task, runtime), 1000)
         if (file.size > 0 && api.startUpload && api.uploadPart && api.completeUpload) {
           runtime.uploadId = await api.startUpload(task.bucket, task.region, task.key, file.type)
           const parts = []
@@ -272,6 +306,7 @@ export function useWorkspace(api = oss) {
               })
             if (task.status === 'cancelled') break
             const end = Math.min(offset + partSize, file.size)
+            const partOffset = offset
             const etag = await api.uploadPart(
               task.bucket,
               task.region,
@@ -279,15 +314,22 @@ export function useWorkspace(api = oss) {
               runtime.uploadId,
               partNumber,
               file.slice(offset, end),
+              (partLoaded) => {
+                const loaded = Number(partLoaded)
+                if (Number.isFinite(loaded)) {
+                  runtime.loaded = Math.max(
+                    runtime.loaded,
+                    Math.min(file.size, partOffset + loaded),
+                  )
+                  syncUploadProgress(task, runtime)
+                }
+              },
             )
             parts.push({ partNumber, etag })
             offset = end
-            const now = performance.now()
-            task.loaded = offset
-            task.progress = file.size ? Math.round((offset / file.size) * 1000) / 10 : 100
-            task.speed = Math.round(((offset - sampledBytes) * 1000) / Math.max(now - sampledAt, 1))
-            sampledAt = now
-            sampledBytes = offset
+            runtime.loaded = Math.max(runtime.loaded, offset)
+            syncUploadProgress(task, runtime)
+            await timing.nextFrame?.()
           }
           if (task.status !== 'cancelled') {
             await api.completeUpload(task.bucket, task.region, task.key, runtime.uploadId, parts)
@@ -296,7 +338,7 @@ export function useWorkspace(api = oss) {
           await api.upload(task.bucket, task.region, task.key, file)
           task.loaded = file.size
           task.progress = 100
-          task.speed = Math.round((file.size * 1000) / Math.max(performance.now() - started, 1))
+          task.speed = Math.round((file.size * 1000) / Math.max(timing.now() - started, 1))
         }
         if (task.status !== 'cancelled') {
           task.loaded = file.size
@@ -307,9 +349,11 @@ export function useWorkspace(api = oss) {
       } catch (e) {
         if (task.status !== 'cancelled') {
           task.status = 'error'
+          task.speed = 0
           task.error = String(e)
         }
       } finally {
+        if (runtime.ticker !== null) timing.clearInterval(runtime.ticker)
         if (['cancelled', 'error'].includes(task.status) && runtime.uploadId && api.abortUpload) {
           try {
             await api.abortUpload(task.bucket, task.region, task.key, runtime.uploadId)
@@ -326,13 +370,20 @@ export function useWorkspace(api = oss) {
   }
   function pauseUpload(id) {
     const task = transfers.value.find((item) => item.id === id)
-    if (task?.status === 'active') task.status = 'paused'
+    const runtime = uploadRuntime.get(id)
+    if (task?.status === 'active') {
+      if (runtime) sampleUploadSpeed(task, runtime)
+      task.status = 'paused'
+      task.speed = 0
+    }
   }
   function resumeUpload(id) {
     const task = transfers.value.find((item) => item.id === id)
     const runtime = uploadRuntime.get(id)
     if (task?.status !== 'paused' || !runtime) return
     task.status = 'active'
+    runtime.sampledAt = timing.now()
+    runtime.sampledBytes = runtime.loaded
     runtime.wake?.()
     runtime.wake = null
   }

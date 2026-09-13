@@ -1,10 +1,11 @@
 use chrono::Utc;
+use futures_util::stream;
 use hmac::{Hmac, Mac};
-use reqwest::{Client, Method};
+use reqwest::{Body, Client, Method};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, sync::Mutex, time::Duration};
-use tauri::State;
+use std::{collections::BTreeMap, convert::Infallible, sync::Mutex, time::Duration};
+use tauri::{ipc::Channel, State};
 use tauri_plugin_dialog::DialogExt;
 
 const MAX_FILE_SIZE: usize = 100 * 1024 * 1024;
@@ -295,6 +296,7 @@ async fn request(
         content_type,
         forbid_overwrite,
         &[],
+        None,
         options,
     )
     .await
@@ -311,6 +313,7 @@ async fn request_with_headers(
     content_type: &str,
     forbid_overwrite: bool,
     extra_headers: &[(String, String)],
+    on_progress: Option<Channel<u64>>,
     options: &RequestOptions,
 ) -> Result<reqwest::Response, String> {
     options.validate()?;
@@ -385,7 +388,21 @@ async fn request_with_headers(
             req = req.header(key, value);
         }
         if let Some(bytes) = body.take() {
-            req = req.body(bytes);
+            if let Some(channel) = on_progress.as_ref() {
+                let total = bytes.len();
+                let bytes = bytes::Bytes::from(bytes);
+                let channel = channel.clone();
+                let chunks = stream::iter((0..total).step_by(64 * 1024).map(move |start| {
+                    let end = (start + 64 * 1024).min(total);
+                    let _ = channel.send(end as u64);
+                    Ok::<_, Infallible>(bytes.slice(start..end))
+                }));
+                req = req
+                    .header(reqwest::header::CONTENT_LENGTH, total)
+                    .body(Body::wrap_stream(chunks));
+            } else {
+                req = req.body(bytes);
+            }
         }
         match req.send().await {
             Err(e) => {
@@ -727,13 +744,14 @@ pub async fn upload_part(
     upload_id: String,
     part_number: u32,
     data: Vec<u8>,
+    on_progress: Channel<u64>,
     options: Option<RequestOptions>,
     state: State<'_, OssState>,
 ) -> Result<String, String> {
     if !(1..=10_000).contains(&part_number) || data.is_empty() || data.len() > MAX_FILE_SIZE {
         return Err("errors.invalidUploadPart".into());
     }
-    let response = request(
+    let response = request_with_headers(
         &credentials(&state)?,
         Method::PUT,
         &bucket,
@@ -746,6 +764,8 @@ pub async fn upload_part(
         Some(data),
         "application/octet-stream",
         false,
+        &[],
+        Some(on_progress),
         &options.unwrap_or_default(),
     )
     .await?;
@@ -928,6 +948,7 @@ pub async fn copy_object(
             "x-oss-copy-source".into(),
             format!("/{bucket}/{}", encode(&source_key, true)),
         )],
+        None,
         &options,
     )
     .await?;
@@ -978,6 +999,7 @@ pub async fn set_object_acl(
         "",
         false,
         &[("x-oss-object-acl".into(), acl)],
+        None,
         &options.unwrap_or_default(),
     )
     .await?;
@@ -1094,6 +1116,7 @@ pub async fn set_object_headers(
         "",
         false,
         &extra_headers,
+        None,
         &options.unwrap_or_default(),
     )
     .await?;
@@ -1158,6 +1181,7 @@ pub async fn create_symlink(
         "",
         true,
         &[("x-oss-symlink-target".into(), encode(&source_key, true))],
+        None,
         &options.unwrap_or_default(),
     )
     .await?;
